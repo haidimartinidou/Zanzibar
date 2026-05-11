@@ -1,0 +1,4 @@
+project_id = "cjrucsssvwkipafbjklq"
+
+[functions.generate-playlist]
+verify_jwt = false

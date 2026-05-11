@@ -1,0 +1,1 @@
+ALTER TABLE public.playlists ADD COLUMN IF NOT EXISTS transition text NOT NULL DEFAULT 'smooth';
