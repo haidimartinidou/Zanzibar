@@ -3,15 +3,9 @@
   "name": "zanzibar",
   "compatibility_date": "2025-09-24",
   "compatibility_flags": ["nodejs_compat"],
-  "main": "@tanstack/react-start/server-entry",
-{
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "zanzibar",
-  "compatibility_date": "2025-09-24",
-  "compatibility_flags": ["nodejs_compat"],
   "main": "@tanstack/react-start/server",
   "vars": {
     "SUPABASE_URL": "https://ubqnwxgjcsgotzglgmzc.supabase.co",
     "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_PIWISPMpcwzuRsADonhjYQ_Td6QAqkb"
   }
-}}
+}
