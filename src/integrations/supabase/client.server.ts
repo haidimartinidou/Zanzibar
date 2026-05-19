@@ -15,6 +15,15 @@ function createSupabaseAdminClient() {
       ...(!SUPABASE_SERVICE_ROLE_KEY ? ['SUPABASE_SERVICE_ROLE_KEY'] : []),
     ];
     const message = `Missing Supabase environment variable(s): ${missing.join(', ')}. Connect Supabase in Lovable Cloud.`;
+    // In dev, return a stub admin client that throws on use so SSR code can load.
+    const isDev = (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') || (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.DEV);
+    if (isDev) {
+      console.warn(`[Supabase] ${message} — returning stub admin client for local development.`);
+      const stub: any = new Proxy({}, {
+        get() { return () => { throw new Error(`${message} — set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in your environment`); }; }
+      });
+      return stub as unknown as ReturnType<typeof createClient>;
+    }
     console.error(`[Supabase] ${message}`);
     throw new Error(message);
   }

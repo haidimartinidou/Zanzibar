@@ -527,10 +527,38 @@ function SetPage() {
               <Button
                 size="sm"
                 className="bg-gradient-sunset shadow-glow bg-lime-400 text-fuchsia-700 border-lime-400"
-                onClick={() => {
-                  startSpotifyLogin(window.location.pathname).catch((e: any) =>
-                    toast.error(e?.message ?? "Failed to start Spotify login"),
-                  );
+                onClick={async () => {
+                  try {
+                    const clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID || (window as any).VITE_SPOTIFY_CLIENT_ID;
+                    if (!clientId) throw new Error('Missing SPOTIFY_CLIENT_ID');
+                    const randStr = (len = 64) => {
+                      const arr = new Uint8Array(len);
+                      crypto.getRandomValues(arr);
+                      return Array.from(arr, (b) => ("0" + b.toString(16)).slice(-2)).join("");
+                    };
+                    const sha256 = async (input: string) => {
+                      const data = new TextEncoder().encode(input);
+                      const hash = await crypto.subtle.digest('SHA-256', data);
+                      return btoa(String.fromCharCode(...new Uint8Array(hash))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+                    };
+                    const verifier = randStr(64);
+                    const challenge = await sha256(verifier);
+                    sessionStorage.setItem('vibedeck:spotify_verifier', verifier);
+                    sessionStorage.setItem('vibedeck:spotify_return', window.location.pathname);
+                    const params = new URLSearchParams({
+                      client_id: clientId,
+                      response_type: 'code',
+                      redirect_uri: `${window.location.origin}/spotify-callback`,
+                      code_challenge_method: 'S256',
+                      code_challenge: challenge,
+                      scope: ['streaming','user-read-email','user-read-private','user-modify-playback-state','user-read-playback-state'].join(' '),
+                    });
+                    const authUrl = `https://accounts.spotify.com/authorize?${params}`;
+                    const opened = window.open(authUrl, '_blank', 'noopener');
+                    if (!opened) window.location.href = authUrl;
+                  } catch (e: any) {
+                    toast.error(e?.message ?? 'Failed to start Spotify login');
+                  }
                 }}
               >
                 Connect Spotify
@@ -568,7 +596,13 @@ function SetPage() {
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => onRowClick(i)}
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-sunset text-primary-foreground shadow-glow bg-lime-400 text-fuchsia-700 border-lime-400"
+                      disabled={!spotifyOn}
+                      title={spotifyOn ? "Play track" : "Connect Spotify to play"}
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full shadow-glow border-lime-400 transition-opacity ${
+                        spotifyOn
+                          ? "bg-gradient-sunset text-primary-foreground bg-lime-400 text-fuchsia-700 cursor-pointer hover:opacity-90"
+                          : "bg-muted text-muted-foreground cursor-not-allowed opacity-50"
+                      }`}
                     >
                       {isCur && desiredPlaying && !spotifyPaused ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 pl-0.5" />}
                     </button>

@@ -5,9 +5,6 @@ const REFRESH_KEY = "vibedeck:spotify_refresh";
 const EXPIRES_KEY = "vibedeck:spotify_expires";
 const VERIFIER_KEY = "vibedeck:spotify_verifier";
 const RETURN_KEY = "vibedeck:spotify_return";
-/** Query params: hop from localhost → 127.0.0.1 before PKCE (same storage origin as Spotify callback). */
-const PKCE_RESUME_QP = "spotify_pkce";
-const PKCE_RETURN_QP = "spotify_return";
 
 export const SCOPES = [
   "streaming",
@@ -17,24 +14,24 @@ export const SCOPES = [
   "user-read-playback-state",
 ].join(" ");
 
-/**
- * Spotify no longer allows `localhost` as a redirect host (loopback must be an IP literal).
- * If the user opened the app via `http://localhost:PORT`, normalize so the OAuth
- * `redirect_uri` matches what you register in the Spotify dashboard, e.g.
- * `http://127.0.0.1:PORT/spotify-callback`.
- * @see https://developer.spotify.com/documentation/web-api/concepts/redirect_uri
- */
-export const REDIRECT_URI = () => {
-  const { protocol, hostname, port } = window.location;
-  const host = hostname === "localhost" ? "127.0.0.1" : hostname;
-  const origin = port ? `${protocol}//${host}:${port}` : `${protocol}//${host}`;
-  return `${origin}/spotify-callback`;
-};
+export const REDIRECT_URI = () =>
+  `${window.location.origin}/spotify-callback`;
 
-function clientId() {
-  // Spotify "Client ID" is not a secret; it's safe to expose to the browser.
-  const id = import.meta.env.VITE_SPOTIFY_CLIENT_ID as string | undefined;
-  if (!id) throw new Error("VITE_SPOTIFY_CLIENT_ID not configured");
+let cachedClientId: string | null = null;
+async function getSpotifyClientId(): Promise<{ clientId: string }> {
+  const clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID || (typeof process !== "undefined" ? process.env.SPOTIFY_CLIENT_ID : undefined);
+  if (!clientId) {
+    throw new Error(
+      "Missing SPOTIFY_CLIENT_ID. Set VITE_SPOTIFY_CLIENT_ID for local development or SPOTIFY_CLIENT_ID in production."
+    );
+  }
+  return { clientId };
+}
+
+async function clientId() {
+  if (cachedClientId) return cachedClientId;
+  const { clientId: id } = await getSpotifyClientId();
+  cachedClientId = id;
   return id;
 }
 
@@ -52,51 +49,38 @@ async function sha256(input: string) {
 }
 
 export async function startSpotifyLogin(returnPath?: string) {
-  // Callback uses 127.0.0.1 (Spotify disallows "localhost"). sessionStorage is per-origin,
-  // so we must not store the PKCE verifier on localhost if the redirect returns to 127.0.0.1.
-  if (window.location.hostname === "localhost") {
-    const u = new URL(window.location.href);
-    u.hostname = "127.0.0.1";
-    u.searchParams.set(PKCE_RESUME_QP, "1");
-    if (returnPath) u.searchParams.set(PKCE_RETURN_QP, returnPath);
-    window.location.replace(u.toString());
-    return;
+  try {
+    console.log("startSpotifyLogin: invoked");
+    const id = await clientId();
+    const verifier = randStr(64);
+    const challenge = await sha256(verifier);
+    sessionStorage.setItem(VERIFIER_KEY, verifier);
+    if (returnPath) sessionStorage.setItem(RETURN_KEY, returnPath);
+    const params = new URLSearchParams({
+      client_id: id,
+      response_type: "code",
+      redirect_uri: REDIRECT_URI(),
+      code_challenge_method: "S256",
+      code_challenge: challenge,
+      scope: SCOPES,
+    });
+    const authUrl = `https://accounts.spotify.com/authorize?${params}`;
+    console.log("startSpotifyLogin: redirecting to", authUrl);
+    // Prefer opening in a new tab to avoid being blocked in embedded previews.
+    try {
+      const opened = window.open(authUrl, '_blank', 'noopener');
+      if (!opened) window.location.href = authUrl;
+    } catch (e) {
+      window.location.href = authUrl;
+    }
+  } catch (e) {
+    console.error("startSpotifyLogin: error", e);
+    throw e;
   }
-
-  const id = clientId();
-  const verifier = randStr(64);
-  const challenge = await sha256(verifier);
-  sessionStorage.setItem(VERIFIER_KEY, verifier);
-  if (returnPath) sessionStorage.setItem(RETURN_KEY, returnPath);
-  const params = new URLSearchParams({
-    client_id: id,
-    response_type: "code",
-    redirect_uri: REDIRECT_URI(),
-    code_challenge_method: "S256",
-    code_challenge: challenge,
-    scope: SCOPES,
-  });
-  window.location.href = `https://accounts.spotify.com/authorize?${params}`;
-}
-
-/**
- * After hopping localhost → 127.0.0.1, continue OAuth from the same origin as `/spotify-callback`.
- * Called once from the root layout on load.
- */
-export async function resumeSpotifyPkceLoginIfNeeded(): Promise<void> {
-  if (typeof window === "undefined") return;
-  if (window.location.hostname === "localhost") return;
-  const u = new URL(window.location.href);
-  if (u.searchParams.get(PKCE_RESUME_QP) !== "1") return;
-  const returnPath = u.searchParams.get(PKCE_RETURN_QP) ?? u.pathname;
-  u.searchParams.delete(PKCE_RESUME_QP);
-  u.searchParams.delete(PKCE_RETURN_QP);
-  window.history.replaceState({}, "", u.toString());
-  await startSpotifyLogin(returnPath);
 }
 
 export async function exchangeCode(code: string) {
-  const id = clientId();
+  const id = await clientId();
   const verifier = sessionStorage.getItem(VERIFIER_KEY);
   if (!verifier) throw new Error("Missing PKCE verifier");
   const body = new URLSearchParams({
@@ -124,7 +108,7 @@ function saveTokens(t: { access_token: string; refresh_token?: string; expires_i
 }
 
 async function refresh(): Promise<string | null> {
-  const id = clientId();
+  const id = await clientId();
   const refresh_token = localStorage.getItem(REFRESH_KEY);
   if (!refresh_token) return null;
   const res = await fetch("https://accounts.spotify.com/api/token", {
@@ -160,6 +144,24 @@ export function consumeReturnPath() {
   const p = sessionStorage.getItem(RETURN_KEY);
   sessionStorage.removeItem(RETURN_KEY);
   return p;
+}
+
+export async function resumeSpotifyPkceLoginIfNeeded() {
+  if (typeof window === "undefined") return;
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("code");
+  const error = params.get("error");
+  if (!code && !error) return;
+  if (!window.location.pathname.endsWith("/spotify-callback")) return;
+
+  if (error) {
+    throw new Error(`Spotify login failed: ${error}`);
+  }
+
+  await exchangeCode(code!);
+  const back = consumeReturnPath() ?? "/library";
+  const safe = back.startsWith("/") && !back.startsWith("//") ? back : "/library";
+  window.location.replace(safe);
 }
 
 // Spotify Web API
@@ -292,44 +294,20 @@ export function snapToPhrase(targetMs: number, analysis: any | null): number {
   return Math.round(targetMs / 4000) * 4000;
 }
 
-export type SpotifyConnectDevice = {
-  id: string;
-  is_active: boolean;
-  is_restricted: boolean;
-  name: string;
-  type: string;
-  volume_percent: number | null;
-};
 
-function playQuery(deviceId: string) {
-  return `device_id=${encodeURIComponent(deviceId)}`;
+export async function playTrack(deviceId: string, uri: string, positionMs = 0) {
+  await api(`/me/player/play?device_id=${deviceId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uris: [uri], position_ms: positionMs }),
+  });
 }
-
-export async function getAvailableDevices(): Promise<SpotifyConnectDevice[]> {
-  const data = await api("/me/player/devices");
-  return (data?.devices ?? []) as SpotifyConnectDevice[];
+export async function pausePlayback(deviceId: string) {
+  await api(`/me/player/pause?device_id=${deviceId}`, { method: "PUT" });
 }
-
-/**
- * Web Playback SDK can fire "ready" before GET /me/player/devices lists the device.
- * Without this, /me/player/play returns 404 "Device not found".
- */
-export async function waitForConnectDevice(
-  deviceId: string,
-  { attempts = 16, delayMs = 200 } = {},
-): Promise<boolean> {
-  for (let i = 0; i < attempts; i++) {
-    try {
-      const devices = await getAvailableDevices();
-      if (devices.some((d) => d.id === deviceId && !d.is_restricted)) return true;
-    } catch {
-      /* bearer may still be propagating */
-    }
-    await new Promise((r) => setTimeout(r, delayMs));
-  }
-  return false;
+export async function resumePlayback(deviceId: string) {
+  await api(`/me/player/play?device_id=${deviceId}`, { method: "PUT" });
 }
-
 export async function transferPlayback(deviceId: string) {
   await api(`/me/player`, {
     method: "PUT",
@@ -338,24 +316,27 @@ export async function transferPlayback(deviceId: string) {
   });
 }
 
-/** Route playback to our Web Player, then start the track (two steps Spotify expects for browser SDK). */
 export async function transferAndPlay(deviceId: string, uri: string, positionMs = 0) {
   await transferPlayback(deviceId);
-  // Connect API can return before the device is ready to accept play; brief pause avoids 404s.
-  await new Promise((r) => setTimeout(r, 150));
   await playTrack(deviceId, uri, positionMs);
 }
 
-export async function playTrack(deviceId: string, uri: string, positionMs = 0) {
-  await api(`/me/player/play?${playQuery(deviceId)}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ uris: [uri], position_ms: positionMs }),
-  });
-}
-export async function pausePlayback(deviceId: string) {
-  await api(`/me/player/pause?${playQuery(deviceId)}`, { method: "PUT" });
-}
-export async function resumePlayback(deviceId: string) {
-  await api(`/me/player/play?${playQuery(deviceId)}`, { method: "PUT" });
+export async function waitForConnectDevice(deviceId: string, options?: { attempts?: number; delayMs?: number }) {
+  const attempts = options?.attempts ?? 12;
+  const delayMs = options?.delayMs ?? 500;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const data = await api(`/me/player`);
+      // data.device may be the current active device
+      if (data && data.device && data.device.id === deviceId) return true;
+      // Some responses include devices list
+      if (data && Array.isArray((data as any).devices)) {
+        if ((data as any).devices.some((d: any) => d.id === deviceId)) return true;
+      }
+    } catch (e) {
+      // ignore and retry
+    }
+    await new Promise((r) => setTimeout(r, delayMs));
+  }
+  return false;
 }

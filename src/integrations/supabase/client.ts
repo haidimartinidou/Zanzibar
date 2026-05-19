@@ -14,6 +14,16 @@ function createSupabaseClient() {
       ...(!SUPABASE_PUBLISHABLE_KEY ? ['SUPABASE_PUBLISHABLE_KEY'] : []),
     ];
     const message = `Missing Supabase environment variable(s): ${missing.join(', ')}. Connect Supabase in Lovable Cloud.`;
+    // In dev, return a stub client that throws on use so the app can start.
+    if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.DEV) {
+      console.warn(`[Supabase] ${message} — returning stub client for local development.`);
+      const stub: any = new Proxy({}, {
+        get() {
+          return () => { throw new Error(`${message} — set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in .env`); };
+        }
+      });
+      return stub as unknown as ReturnType<typeof createClient>;
+    }
     console.error(`[Supabase] ${message}`);
     throw new Error(message);
   }
