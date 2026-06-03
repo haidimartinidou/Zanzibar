@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { generatePlaylist } from "@/lib/generate-playlist";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -88,17 +89,7 @@ function VibePage() {
         timeline: useTimeline ? timeline : undefined,
         globalEar,
       };
-      const resp = await fetch("/api/generate-playlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brief: finalBrief }),
-      });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error(err.error || `Request failed (${resp.status})`);
-      }
-      const data = await resp.json();
-      if (data?.error) throw new Error(data.error);
+      const data = await generatePlaylist({ data: { brief: finalBrief } });
 
       const tracks: Track[] = data.tracks;
       const name: string = data.name;

@@ -1,4 +1,4 @@
-import { createAPIFileRoute } from "@tanstack/react-start/api";
+import { createServerFn } from "@tanstack/react-start";
 
 const systemPrompt = `You are an elite DJ and music director building dancefloor-aware setlists that mix like a real DJ would.
 
@@ -47,16 +47,12 @@ const energyMap: Record<string, string> = {
   peak: "8-10 (peak hour)",
 };
 
-export const APIRoute = createAPIFileRoute("/api/generate-playlist")({
-  POST: async ({ request }) => {
-    const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-    if (!OPENAI_API_KEY) {
-      return new Response(JSON.stringify({ error: "OPENAI_API_KEY not configured" }), {
-        status: 500, headers: { "Content-Type": "application/json" },
-      });
-    }
+export const generatePlaylist = createServerFn({ method: "POST" }).handler(
+  async (ctx) => {
+    const { brief } = ctx.data as { brief: any };
 
-    const { brief } = await request.json();
+    const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+    if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY not configured");
 
     const targetMinutes = Math.max(15, Math.min(360, Number(brief?.durationMinutes) || 60));
     const trackCount = Math.max(8, Math.min(40, Math.round(targetMinutes / 2.5)));
@@ -137,28 +133,14 @@ Use REAL songs. Blend styles — don't stack one then the other. Assign each tra
     });
 
     if (!resp.ok) {
-      if (resp.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit hit. Try again in a moment." }), {
-          status: 429, headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (resp.status === 402) {
-        return new Response(JSON.stringify({ error: "OpenAI quota exceeded." }), {
-          status: 402, headers: { "Content-Type": "application/json" },
-        });
-      }
-      return new Response(JSON.stringify({ error: "AI error" }), {
-        status: 500, headers: { "Content-Type": "application/json" },
-      });
+      if (resp.status === 429) throw new Error("Rate limit hit. Try again in a moment.");
+      if (resp.status === 402) throw new Error("OpenAI quota exceeded.");
+      throw new Error(`AI error (${resp.status})`);
     }
 
-    const data = await resp.json();
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall) {
-      return new Response(JSON.stringify({ error: "No response from AI" }), {
-        status: 500, headers: { "Content-Type": "application/json" },
-      });
-    }
+    const aiData = await resp.json();
+    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall) throw new Error("No response from AI");
 
     const parsed = JSON.parse(toolCall.function.arguments);
     const tracks = (parsed.tracks || []).map((t: any, i: number) => {
@@ -168,7 +150,7 @@ Use REAL songs. Blend styles — don't stack one then the other. Assign each tra
         ? Math.round((endMs - startMs) / 1000)
         : Math.round(t.playSeconds);
       return {
-        id: `${Date.now()}-${i}`,
+        id: `${i}`,
         title: t.title,
         artist: t.artist,
         reason: t.reason,
@@ -183,8 +165,6 @@ Use REAL songs. Blend styles — don't stack one then the other. Assign each tra
       };
     });
 
-    return new Response(JSON.stringify({ name: parsed.name, tracks }), {
-      headers: { "Content-Type": "application/json" },
-    });
-  },
-});
+    return { name: parsed.name as string, tracks };
+  }
+);
