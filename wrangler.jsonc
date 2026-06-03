@@ -3,7 +3,7 @@
   "name": "zanzibar",
   "compatibility_date": "2025-09-24",
   "compatibility_flags": ["nodejs_compat"],
-  "main": "@tanstack/react-start/server",
+  "main": "@tanstack/react-start/server-entry",
   "vars": {
     "SUPABASE_URL": "https://ubqnwxgjcsgotzglgmzc.supabase.co",
     "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_PIWISPMpcwzuRsADonhjYQ_Td6QAqkb"
