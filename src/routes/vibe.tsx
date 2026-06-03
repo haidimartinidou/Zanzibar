@@ -88,8 +88,16 @@ function VibePage() {
         timeline: useTimeline ? timeline : undefined,
         globalEar,
       };
-      const { data, error } = await supabase.functions.invoke("generate-playlist", { body: { brief: finalBrief } });
-      if (error) throw error;
+      const resp = await fetch("/api/generate-playlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brief: finalBrief }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || `Request failed (${resp.status})`);
+      }
+      const data = await resp.json();
       if (data?.error) throw new Error(data.error);
 
       const tracks: Track[] = data.tracks;
