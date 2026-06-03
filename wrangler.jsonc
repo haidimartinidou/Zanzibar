@@ -7,5 +7,13 @@
   "vars": {
     "SUPABASE_URL": "https://ubqnwxgjcsgotzglgmzc.supabase.co",
     "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_PIWISPMpcwzuRsADonhjYQ_Td6QAqkb"
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true
+    }
   }
 }
