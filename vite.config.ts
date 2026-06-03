@@ -34,6 +34,17 @@ export default defineConfig(async ({ command }) => {
 
   return {
     plugins,
+    // Bake public (non-secret) env vars into the client bundle so they work
+    // in Cloudflare CI where the .env file is not present (it's gitignored).
+    // These values are already in wrangler.jsonc as plaintext — same security level.
+    define: {
+      "import.meta.env.VITE_SUPABASE_URL": JSON.stringify(
+        "https://ubqnwxgjcsgotzglgmzc.supabase.co"
+      ),
+      "import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY": JSON.stringify(
+        "sb_publishable_PIWISPMpcwzuRsADonhjYQ_Td6QAqkb"
+      ),
+    },
     server: {
       host: "0.0.0.0",
       port: 5173,
