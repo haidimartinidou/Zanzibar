@@ -14,7 +14,7 @@ function createSupabaseAdminClient() {
       ...(!SUPABASE_URL ? ['SUPABASE_URL'] : []),
       ...(!SUPABASE_SERVICE_ROLE_KEY ? ['SUPABASE_SERVICE_ROLE_KEY'] : []),
     ];
-    const message = `Missing Supabase environment variable(s): ${missing.join(', ')}. Connect Supabase in Lovable Cloud.`;
+    const message = `Missing Supabase environment variable(s): ${missing.join(', ')}. Set the required environment variables in your .env file.`;
     // In dev, return a stub admin client that throws on use so SSR code can load.
     const isDev = (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') || (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.DEV);
     if (isDev) {

@@ -572,7 +572,7 @@ function SetPage() {
             <div className="flex min-w-0 gap-2">
               <Volume2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
               <p className="text-muted-foreground">
-                Spotify can show "Playing on VibeDeck" but stay silent inside the Lovable preview. Open the app directly for browser audio.
+                Spotify can show "Playing on VibeDeck" but stay silent in some embedded contexts. Open the app directly for browser audio.
               </p>
             </div>
             <Button size="sm" className="shrink-0 bg-gradient-sunset shadow-glow" onClick={() => window.open(window.location.href, "_blank", "noopener,noreferrer")}>

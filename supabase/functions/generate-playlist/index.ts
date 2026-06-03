@@ -1,4 +1,4 @@
-// Generate a DJ playlist with smart cut-off times via Lovable AI
+// Generate a DJ playlist with smart cut-off times via OpenAI
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -9,8 +9,8 @@ Deno.serve(async (req) => {
 
   try {
     const { brief } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY not configured");
 
     const targetMinutes = Math.max(15, Math.min(360, Number(brief?.durationMinutes) || 60));
     // Aim for tracks averaging ~2.5 min played
@@ -86,14 +86,14 @@ Notes: ${brief.notes || "none"}
 
 Use REAL songs (real artist + real title). When multiple styles are listed, BLEND them — don't just stack one then the other. Find natural bridges between styles. When a TIMELINE is provided, sequence tracks so each window's energy and style match what's requested at that point in the night. Assign each track a playSeconds cut-off using the rules above. Provide a one-line "reason" explaining why each track fits this exact moment of the set.`;
 
-    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "gpt-4o-mini",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -145,7 +145,7 @@ Use REAL songs (real artist + real title). When multiple styles are listed, BLEN
         });
       }
       if (resp.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Add funds in Settings → Workspace → Usage." }), {
+        return new Response(JSON.stringify({ error: "OpenAI quota exceeded. Check your usage at platform.openai.com." }), {
           status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }

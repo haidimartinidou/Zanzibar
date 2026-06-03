@@ -1,117 +1,113 @@
 # Zanzibar
 
-A Cloudflare/Vite + Supabase app for Spotify-powered DJ playlists.
+A Cloudflare Workers + Supabase app for Spotify-powered AI DJ setlists.
+
+## Stack
+
+- **Frontend/SSR**: TanStack Start (React, Vite, TypeScript)
+- **Deployment**: Cloudflare Workers
+- **Database + Auth**: Supabase
+- **Playlist AI**: OpenAI (`gpt-4o-mini`) via Supabase Edge Function
+- **Music playback**: Spotify Web Playback SDK
+
+---
 
 ## Local development
 
-1. Copy `.env.example` to `.env`.
-2. Fill in the required values:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_PUBLISHABLE_KEY`
-   - `SUPABASE_URL`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-   - `LOVABLE_API_KEY`
-   - `VITE_SPOTIFY_CLIENT_ID` or `SPOTIFY_CLIENT_ID`
-3. Install dependencies:
-   - `npm install`
-4. Start the app:
-   - `npm run dev`
+1. Copy `.env.example` to `.env` and fill in all values:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+3. Start the dev server:
+
+   ```bash
+   npm run dev
+   ```
+
+   The app runs at `http://localhost:5173`.
+
+### Required `.env` values
+
+| Variable | Where to get it |
+|----------|----------------|
+| `VITE_SUPABASE_URL` | Supabase → Project Settings → API |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase → Project Settings → API (anon key) |
+| `SUPABASE_URL` | Same as above |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API (service_role key) |
+| `OPENAI_API_KEY` | platform.openai.com → API Keys |
+| `VITE_SPOTIFY_CLIENT_ID` | Spotify Developer Dashboard → your app |
+| `SPOTIFY_CLIENT_ID` | Same as above |
+
+---
 
 ## Build
 
-- `npm run build`
-- `npm run preview`
-
-## Deployment notes
-
-### Required environment variables
-
-- `VITE_SUPABASE_URL` — Supabase project URL for client-side auth and data access.
-- `VITE_SUPABASE_PUBLISHABLE_KEY` — Supabase public anon key for client-side access.
-- `SUPABASE_URL` — Same Supabase URL for server-side functions.
-- `SUPABASE_SERVICE_ROLE_KEY` — Supabase service role key for server-side admin operations and function calls.
-- `LOVABLE_API_KEY` — API key for the Lovable AI gateway used by `supabase/functions/generate-playlist`.
-- `VITE_SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_ID` — Spotify app client ID for the PKCE login flow.
-
-### Spotify setup
-
-- Register a Spotify developer app.
-- Add the production redirect URI: `https://<your-domain>/spotify-callback`.
-- Use the Spotify app client ID in `VITE_SPOTIFY_CLIENT_ID` for development or `SPOTIFY_CLIENT_ID` for production.
-
-### Supabase setup
-
-- Deploy the function in `supabase/functions/generate-playlist`.
-- Run your Supabase migrations for the production database.
-- Ensure `LOVABLE_API_KEY` is configured in the function environment.
-
-### Recommended deployment path: Cloudflare + Supabase
-
-#### 1. Prerequisites
-
-- Cloudflare account with a Workers project
-- Supabase project with the database set up
-- Spotify developer app with redirect URI registered
-- Lovable API access for playlist generation
-
-#### 2. Deploy the Supabase Edge Function
-
-From the project root:
-
 ```bash
-npx supabase functions deploy generate-playlist --project-id <your-project-id>
+npm run build      # production build
+npm run preview    # serve the production build locally
 ```
 
-Then set the LOVABLE_API_KEY secret in the Supabase dashboard:
-- Go to `Project Settings` → `Functions` → `generate-playlist`
-- Add environment variable `LOVABLE_API_KEY` with your API key
+---
 
-#### 3. Deploy to Cloudflare Workers
+## Deployment: Cloudflare Workers + Supabase
 
-First, install Wrangler:
-
-```bash
-npm install -g @cloudflare/wrangler
-# or locally:
-npm install --save-dev @cloudflare/wrangler
-```
-
-Authenticate:
+### 1. Authenticate with Cloudflare
 
 ```bash
 npx wrangler login
 ```
 
-Set production secrets in Cloudflare:
+### 2. Set production secrets
+
+Paste each value when prompted:
 
 ```bash
 npx wrangler secret put SUPABASE_URL
 npx wrangler secret put SUPABASE_PUBLISHABLE_KEY
 npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
-npx wrangler secret put LOVABLE_API_KEY
+npx wrangler secret put OPENAI_API_KEY
 npx wrangler secret put SPOTIFY_CLIENT_ID
 ```
 
-(Paste your actual values when prompted for each.)
-
-Build and publish:
+### 3. Build and deploy
 
 ```bash
 npm run build
-npx wrangler publish
+npx wrangler deploy
 ```
 
-#### 4. Verify deployment
+Wrangler will print your live URL — e.g. `https://zanzibar.<your-subdomain>.workers.dev`.
+
+### 4. Register the Spotify redirect URI
+
+In the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard), open your app → Edit → add:
+
+```
+https://zanzibar.<your-subdomain>.workers.dev/spotify-callback
+```
+
+### 5. Deploy the Supabase edge function
+
+```bash
+npx supabase functions deploy generate-playlist --project-id <your-supabase-project-id>
+```
+
+Then add the `OPENAI_API_KEY` secret in Supabase:
+
+```bash
+npx supabase secrets set OPENAI_API_KEY=<your-key> --project-id <your-supabase-project-id>
+```
+
+### 6. Verify
 
 - Visit your worker URL.
-- Check that `/spotify-callback` route exists.
-- Test Spotify login (redirect to Spotify should work if client ID is correct).
-- Test playlist generation (should call the Supabase function).
-
-## What was fixed
-
-- Added `src/server/spotify.functions.server.ts` to provide the required Spotify client ID helper.
-- Added `.env.example` with the app's required environment variables.
-- Added dev-safe stubs for Supabase and Spotify helpers so the app boots without secrets.
-- Updated `spotify-callback.tsx` to show a friendly message when Spotify is not configured.
-- Enhanced README with complete Cloudflare + Supabase deployment commands.
+- Test Spotify login — the `/spotify-callback` route should complete the PKCE flow.
+- Create a vibe brief and confirm playlist generation calls OpenAI successfully.

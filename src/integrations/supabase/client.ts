@@ -13,7 +13,7 @@ function createSupabaseClient() {
       ...(!SUPABASE_URL ? ['SUPABASE_URL'] : []),
       ...(!SUPABASE_PUBLISHABLE_KEY ? ['SUPABASE_PUBLISHABLE_KEY'] : []),
     ];
-    const message = `Missing Supabase environment variable(s): ${missing.join(', ')}. Connect Supabase in Lovable Cloud.`;
+    const message = `Missing Supabase environment variable(s): ${missing.join(', ')}. Set the required environment variables in your .env file.`;
     // In dev, return a stub client that throws on use so the app can start.
     if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.DEV) {
       console.warn(`[Supabase] ${message} — returning stub client for local development.`);
