@@ -68,6 +68,20 @@ export const generatePlaylist = createServerFn({ method: "POST" }).handler(
         ).join("\n")
       : null;
 
+    // Per-call randomization so identical briefs don't collapse to the same
+    // canonical setlist. The seed + a rotating "exploration lens" push the model
+    // into a different corner of the catalog on every generation.
+    const seed = Math.random().toString(36).slice(2, 10);
+    const lenses = [
+      "lean into deep cuts and tasteful B-sides rather than the #1 radio hits",
+      "pull from a wide spread of eras — vintage gems alongside the modern",
+      "favor songs that are beloved but slightly less obvious",
+      "spotlight a broad set of artists; never lean on the same handful twice",
+      "explore adjacent sub-genres and international scenes that fit the vibe",
+      "chase a fresh, crate-digger selection that still reads the room",
+    ];
+    const lens = lenses[Math.floor(Math.random() * lenses.length)];
+
     const userPrompt = `Build a ${targetMinutes}-minute DJ set with ${trackCount} tracks.
 
 Event: ${brief.eventType}
@@ -78,7 +92,9 @@ Crowd: ${brief.crowd}
 ${timelineDescription ? `\nTIMELINE — match the energy + style for each window in order:\n${timelineDescription}\n` : ""}${brief.globalEar ? `\nGLOBAL EAR 🌍 — Include AT LEAST ONE (ideally 1-3) tracks sung in a NON-ENGLISH language by artists from outside the US/UK that genuinely fit the vibe. For each, set globalEar: true and language to the primary sung language.\n` : ""}
 Notes: ${brief.notes || "none"}
 
-Use REAL songs. Blend styles — don't stack one then the other. Assign each track a playSeconds cut-off. Provide a one-line "reason" for each track.`;
+Use REAL songs. Blend styles — don't stack one then the other. Assign each track a playSeconds cut-off. Provide a one-line "reason" for each track.
+
+VARIETY DIRECTIVE (creative seed: ${seed}) — Treat this seed as a fresh dice roll for THIS run. Do NOT default to the same canonical greatest-hits you'd reach for every time; for this set, ${lens}. Draw from the FULL breadth of fitting music — many artists, eras, and scenes — so two runs of the same brief share very few tracks. Reach past the 8–10 most overplayed picks for this vibe. Songs must still be REAL and findable on Spotify (no invented titles).`;
 
     const resp = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -87,7 +103,14 @@ Use REAL songs. Blend styles — don't stack one then the other. Assign each tra
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        // gpt-4o has far stronger real-song recall and catalog breadth than
+        // gpt-4o-mini → better picks and more variety run-to-run.
+        model: "gpt-4o",
+        // Higher temperature + a gentle presence penalty widen selection and
+        // discourage repeating the same artists/tracks across generations.
+        // (Kept mild so the forced-JSON tool output stays well-formed.)
+        temperature: 1.0,
+        presence_penalty: 0.4,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },

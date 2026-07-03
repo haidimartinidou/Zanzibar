@@ -54,8 +54,11 @@ export async function startSpotifyLogin(returnPath?: string) {
     const id = await clientId();
     const verifier = randStr(64);
     const challenge = await sha256(verifier);
-    sessionStorage.setItem(VERIFIER_KEY, verifier);
-    if (returnPath) sessionStorage.setItem(RETURN_KEY, returnPath);
+    // Use localStorage (shared across tabs) so the verifier survives the
+    // new-tab redirect to Spotify; sessionStorage is per-tab and would be
+    // empty in the callback tab, causing "Missing PKCE verifier".
+    localStorage.setItem(VERIFIER_KEY, verifier);
+    if (returnPath) localStorage.setItem(RETURN_KEY, returnPath);
     const params = new URLSearchParams({
       client_id: id,
       response_type: "code",
@@ -66,12 +69,22 @@ export async function startSpotifyLogin(returnPath?: string) {
     });
     const authUrl = `https://accounts.spotify.com/authorize?${params}`;
     console.log("startSpotifyLogin: redirecting to", authUrl);
-    // Prefer opening in a new tab to avoid being blocked in embedded previews.
-    try {
-      const opened = window.open(authUrl, '_blank', 'noopener');
-      if (!opened) window.location.href = authUrl;
-    } catch (e) {
-      window.location.href = authUrl;
+    // Same-tab redirect is the correct path for the deployed app: the callback
+    // returns to the SAME tab, so the audio-capable Web Playback player and the
+    // user's click-to-play gesture live in one tab (browser autoplay policy).
+    // Only fall back to a new tab inside an embedded preview (Lovable iframe),
+    // where a top-level redirect isn't reliable; the localStorage verifier makes
+    // that path work too.
+    const framed = window.self !== window.top;
+    if (framed) {
+      try {
+        const opened = window.open(authUrl, "_blank", "noopener");
+        if (!opened) window.location.assign(authUrl);
+      } catch (e) {
+        window.location.assign(authUrl);
+      }
+    } else {
+      window.location.assign(authUrl);
     }
   } catch (e) {
     console.error("startSpotifyLogin: error", e);
@@ -81,7 +94,7 @@ export async function startSpotifyLogin(returnPath?: string) {
 
 export async function exchangeCode(code: string) {
   const id = await clientId();
-  const verifier = sessionStorage.getItem(VERIFIER_KEY);
+  const verifier = localStorage.getItem(VERIFIER_KEY);
   if (!verifier) throw new Error("Missing PKCE verifier");
   const body = new URLSearchParams({
     grant_type: "authorization_code",
@@ -98,7 +111,7 @@ export async function exchangeCode(code: string) {
   if (!res.ok) throw new Error(`Token exchange failed: ${res.status}`);
   const json = await res.json();
   saveTokens(json);
-  sessionStorage.removeItem(VERIFIER_KEY);
+  localStorage.removeItem(VERIFIER_KEY);
 }
 
 function saveTokens(t: { access_token: string; refresh_token?: string; expires_in: number }) {
@@ -141,8 +154,8 @@ export function logoutSpotify() {
 }
 
 export function consumeReturnPath() {
-  const p = sessionStorage.getItem(RETURN_KEY);
-  sessionStorage.removeItem(RETURN_KEY);
+  const p = localStorage.getItem(RETURN_KEY);
+  localStorage.removeItem(RETURN_KEY);
   return p;
 }
 
@@ -173,8 +186,27 @@ async function api(path: string, init?: RequestInit): Promise<any> {
     headers: { ...(init?.headers ?? {}), Authorization: `Bearer ${tok}` },
   });
   if (res.status === 204) return null;
-  if (!res.ok) throw new Error(`Spotify API ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(spotifyErrorMessage(res.status, body));
+  }
   return res.json();
+}
+
+// Turn raw Spotify API errors into actionable messages. The most common one for
+// new users is 403: while the app is in Spotify "Development Mode", only accounts
+// added to the app's User Management list are authorized — everyone else is
+// rejected even though connecting appears to work.
+function spotifyErrorMessage(status: number, body: string): string {
+  if (status === 403) {
+    if (/premium_required/i.test(body)) {
+      return "Spotify Premium is required to play in the browser.";
+    }
+    return "This Spotify account isn't authorized for VibeDeck yet. While the app is in Spotify Development Mode, each listener must be added in the Spotify dashboard (or the app needs Extended Quota Mode).";
+  }
+  if (status === 401) return "Spotify session expired — click Connect Spotify again.";
+  if (status === 429) return "Spotify is rate-limiting requests. Wait a moment and try again.";
+  return `Spotify API ${status}: ${body}`;
 }
 
 export type ResolvedTrack = { uri: string; id: string; durationMs: number };
@@ -326,12 +358,11 @@ export async function waitForConnectDevice(deviceId: string, options?: { attempt
   const delayMs = options?.delayMs ?? 500;
   for (let i = 0; i < attempts; i++) {
     try {
-      const data = await api(`/me/player`);
-      // data.device may be the current active device
-      if (data && data.device && data.device.id === deviceId) return true;
-      // Some responses include devices list
-      if (data && Array.isArray((data as any).devices)) {
-        if ((data as any).devices.some((d: any) => d.id === deviceId)) return true;
+      // /me/player only returns the *active* device (and 204 when idle); a
+      // freshly-ready Web Playback SDK device shows up in the devices list.
+      const data = await api(`/me/player/devices`);
+      if (data && Array.isArray(data.devices) && data.devices.some((d: any) => d.id === deviceId)) {
+        return true;
       }
     } catch (e) {
       // ignore and retry

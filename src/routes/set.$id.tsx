@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import type { Track, Playlist, TransitionMode } from "@/lib/types";
 import {
   isSpotifyConnected, startSpotifyLogin, searchTrack, searchTracks,
-  waitForConnectDevice, transferPlayback, transferAndPlay, pausePlayback, resumePlayback, logoutSpotify, heuristicStartMs,
+  transferPlayback, transferAndPlay, pausePlayback, resumePlayback, logoutSpotify, heuristicStartMs,
   getAudioAnalysis, snapToPhrase,
   type ResolvedTrack, type SearchResult,
 } from "@/lib/spotify";
@@ -69,7 +69,7 @@ function SetPage() {
 
   const {
     deviceId, ready: spReady, error: spError, activate: activateSpotify,
-    setVolume, rampVolume, cancelRamp, player,
+    setVolume, rampVolume, cancelRamp, player, reconnect, getDeviceId,
   } = useSpotifyPlayer(handleState, spotifyOn);
   const isFramed = typeof window !== "undefined" && window.self !== window.top;
 
@@ -201,6 +201,38 @@ function SetPage() {
     }, cutMs);
   }, [fadeMs, transitionMode, rampVolume, pl, deviceId, clearTimers, preloadNext]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Attempt a playback action, recovering from the common Spotify failures:
+  //  - "Device not found" (404) / device errors: the SDK device dropped (idle,
+  //    tab backgrounded, or a backend hiccup). Retrying the same dead id never
+  //    works, so we reconnect ONCE to get a fresh device_id, then retry. The
+  //    `fn` reads getDeviceId() each attempt so it picks up the new id.
+  //  - transient 502 / restriction: just wait and retry.
+  const playWithRetry = useCallback(async (fn: () => Promise<void>, reqId: number) => {
+    let lastErr: any;
+    let reconnected = false;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      if (reqId !== playReqId.current) return;
+      try {
+        await fn();
+        return;
+      } catch (e: any) {
+        lastErr = e;
+        const msg = String(e?.message ?? "").toLowerCase();
+        const deviceLost = msg.includes("device") || msg.includes("404");
+        const transient = deviceLost || msg.includes("502") || msg.includes("restriction");
+        if (!transient) throw e;
+        if (deviceLost && !reconnected) {
+          reconnected = true;
+          await reconnect(); // re-register the device, wait for fresh 'ready'
+          if (reqId !== playReqId.current) return;
+        } else {
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      }
+    }
+    throw lastErr;
+  }, [reconnect]);
+
   // Single command to start a track at index. Cancels any in-flight start.
   const startTrack = useCallback(async (index: number) => {
     if (!pl) return;
@@ -236,33 +268,13 @@ function SetPage() {
       await activateSpotify();
       if (reqId !== playReqId.current) return;
 
-      const seenOnConnect = await waitForConnectDevice(deviceId);
-      if (reqId !== playReqId.current) return;
-      if (!seenOnConnect) {
-        toast.error(
-          "Spotify hasn't registered the in-browser player yet. Click Play again in a moment, or refresh the page.",
-        );
-        setDesiredPlaying(false);
-        return;
-      }
-
       cancelRamp();
-      const tryPlay = async () => {
-        await transferAndPlay(deviceId, info.uri, startMs);
-      };
-      try {
-        await tryPlay();
-      } catch (e: any) {
-        const msg = String(e?.message ?? "");
-        if (msg.includes("404") && msg.toLowerCase().includes("device")) {
-          const again = await waitForConnectDevice(deviceId, { attempts: 24, delayMs: 300 });
-          if (reqId !== playReqId.current) return;
-          if (!again) throw e;
-          await tryPlay();
-        } else {
-          throw e;
-        }
-      }
+      // Play directly to the freshest device_id; playWithRetry reconnects and
+      // refreshes the id if the device dropped ("Device not found").
+      await playWithRetry(
+        () => transferAndPlay(getDeviceId() ?? deviceId, info.uri, startMs),
+        reqId,
+      );
       if (reqId !== playReqId.current) return;
       await setVolume(BASE_VOLUME);
       if (reqId !== playReqId.current) return;
@@ -284,7 +296,7 @@ function SetPage() {
         }
       }
     }
-  }, [pl, spotifyOn, spReady, deviceId, resolve, computeStartMs, computeCutSec, fadeMs, setVolume, rampVolume, cancelRamp, scheduleEndOfCut, clearTimers]);
+  }, [pl, spotifyOn, spReady, deviceId, resolve, computeStartMs, computeCutSec, fadeMs, setVolume, rampVolume, cancelRamp, scheduleEndOfCut, clearTimers, playWithRetry, getDeviceId]);
 
   const pause = useCallback(async () => {
     playReqId.current++; // cancel scheduled fades/advances
@@ -301,12 +313,11 @@ function SetPage() {
     setDesiredPlaying(true);
     try {
       await activateSpotify();
-      if (!(await waitForConnectDevice(deviceId))) {
-        toast.error("Spotify player not ready yet. Try Resume again.");
-        return;
-      }
-      await transferPlayback(deviceId);
-      await resumePlayback(deviceId);
+      await playWithRetry(async () => {
+        const dev = getDeviceId() ?? deviceId;
+        await transferPlayback(dev);
+        await resumePlayback(dev);
+      }, playReqId.current);
     } catch (e: any) { toast.error(e.message); }
     // Reschedule end-of-cut from current elapsed.
     const reqId = ++playReqId.current;
@@ -320,7 +331,7 @@ function SetPage() {
     const cutSec = computeCutSec(t, t.startMs ?? 0);
     const remaining = Math.max(0, cutSec - elapsed);
     scheduleEndOfCut(reqId, elapsed + remaining, current);
-  }, [pl, deviceId, spotifyPaused, elapsed, current, startTrack, scheduleEndOfCut]);
+  }, [pl, deviceId, spotifyPaused, elapsed, current, startTrack, scheduleEndOfCut, playWithRetry, getDeviceId]);
 
   const next = useCallback(() => {
     if (!pl) return;
@@ -529,33 +540,7 @@ function SetPage() {
                 className="bg-gradient-sunset shadow-glow bg-lime-400 text-fuchsia-700 border-lime-400"
                 onClick={async () => {
                   try {
-                    const clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID || (window as any).VITE_SPOTIFY_CLIENT_ID;
-                    if (!clientId) throw new Error('Missing SPOTIFY_CLIENT_ID');
-                    const randStr = (len = 64) => {
-                      const arr = new Uint8Array(len);
-                      crypto.getRandomValues(arr);
-                      return Array.from(arr, (b) => ("0" + b.toString(16)).slice(-2)).join("");
-                    };
-                    const sha256 = async (input: string) => {
-                      const data = new TextEncoder().encode(input);
-                      const hash = await crypto.subtle.digest('SHA-256', data);
-                      return btoa(String.fromCharCode(...new Uint8Array(hash))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-                    };
-                    const verifier = randStr(64);
-                    const challenge = await sha256(verifier);
-                    sessionStorage.setItem('vibedeck:spotify_verifier', verifier);
-                    sessionStorage.setItem('vibedeck:spotify_return', window.location.pathname);
-                    const params = new URLSearchParams({
-                      client_id: clientId,
-                      response_type: 'code',
-                      redirect_uri: `${window.location.origin}/spotify-callback`,
-                      code_challenge_method: 'S256',
-                      code_challenge: challenge,
-                      scope: ['streaming','user-read-email','user-read-private','user-modify-playback-state','user-read-playback-state'].join(' '),
-                    });
-                    const authUrl = `https://accounts.spotify.com/authorize?${params}`;
-                    const opened = window.open(authUrl, '_blank', 'noopener');
-                    if (!opened) window.location.href = authUrl;
+                    await startSpotifyLogin(window.location.pathname);
                   } catch (e: any) {
                     toast.error(e?.message ?? 'Failed to start Spotify login');
                   }

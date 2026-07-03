@@ -30,7 +30,9 @@ function Auth() {
       if (mode === "signup") {
         const { error } = await supabase.auth.signUp({
           email, password,
-          options: { emailRedirectTo: window.location.origin },
+          options: {
+            emailRedirectTo: import.meta.env.VITE_SITE_URL || window.location.origin,
+          },
         });
         if (error) throw error;
         toast.success("Check your email to confirm.");

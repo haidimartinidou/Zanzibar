@@ -25,6 +25,9 @@ dist-ssr
 .wrangler/
 .dev.vars
 
+# Local notes / plans (never committed)
+.notes/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
