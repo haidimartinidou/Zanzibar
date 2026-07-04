@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import zzPlant from "../assets/ZZplant.png";
 
 export const Route = createFileRoute("/")({
   component: HomePage,
@@ -512,33 +513,17 @@ function HomePage() {
           </p>
 
           <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-            <div
+            <img
+              src={zzPlant}
+              alt="ZZ plant (Zamioculcas zamiifolia)"
               style={{
                 width: 120,
                 height: 120,
                 borderRadius: 6,
-                background:
-                  "repeating-linear-gradient(135deg,#FFE0FA,#FFE0FA 10px,#F7C6F0 10px,#F7C6F0 20px)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                objectFit: "cover",
                 flexShrink: 0,
               }}
-            >
-              <span
-                style={{
-                  fontFamily: "'Courier New', monospace",
-                  fontSize: 11,
-                  color: "#8A1F92",
-                  textAlign: "center",
-                  lineHeight: 1.4,
-                }}
-              >
-                ZZ plant
-                <br />
-                photo
-              </span>
-            </div>
+            />
             <div style={{ fontSize: 13, color: "#FFD1F5", letterSpacing: 0.5 }}>
               Energy meter · <em>Zamioculcas zamiifolia</em>
             </div>
