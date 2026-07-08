@@ -1,11 +1,11 @@
 // Spotify Web API + PKCE OAuth helpers (client-side only).
 
-const TOKEN_KEY = "vibedeck:spotify_token";
-const REFRESH_KEY = "vibedeck:spotify_refresh";
-const EXPIRES_KEY = "vibedeck:spotify_expires";
-const VERIFIER_KEY = "vibedeck:spotify_verifier";
-const RETURN_KEY = "vibedeck:spotify_return";
-const SCOPES_KEY = "vibedeck:spotify_scopes";
+const TOKEN_KEY = "zanzibar:spotify_token";
+const REFRESH_KEY = "zanzibar:spotify_refresh";
+const EXPIRES_KEY = "zanzibar:spotify_expires";
+const VERIFIER_KEY = "zanzibar:spotify_verifier";
+const RETURN_KEY = "zanzibar:spotify_return";
+const SCOPES_KEY = "zanzibar:spotify_scopes";
 
 export const SCOPES = [
   "streaming",
@@ -215,7 +215,7 @@ function spotifyErrorMessage(status: number, body: string): string {
     if (/premium_required/i.test(body)) {
       return "Spotify Premium is required to play in the browser.";
     }
-    return "This Spotify account isn't authorized for VibeDeck yet. While the app is in Spotify Development Mode, each listener must be added in the Spotify dashboard (or the app needs Extended Quota Mode).";
+    return "This Spotify account isn't authorized for Zanzibar yet. While the app is in Spotify Development Mode, each listener must be added in the Spotify dashboard (or the app needs Extended Quota Mode).";
   }
   if (status === 401) return "Spotify session expired — click Connect Spotify again.";
   if (status === 429) return "Spotify is rate-limiting requests. Wait a moment and try again.";

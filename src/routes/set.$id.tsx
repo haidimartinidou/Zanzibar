@@ -82,7 +82,7 @@ function SetPage() {
   useEffect(() => {
     (async () => {
       if (id === "draft") {
-        const raw = sessionStorage.getItem("vibedeck:draft");
+        const raw = sessionStorage.getItem("zanzibar:draft");
         if (raw) setPl(JSON.parse(raw));
         return;
       }

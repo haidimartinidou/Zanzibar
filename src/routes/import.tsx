@@ -81,7 +81,7 @@ function ImportPage() {
         if (error) throw error;
         await navigate({ to: "/set/$id", params: { id: row.id } });
       } else {
-        sessionStorage.setItem("vibedeck:draft", JSON.stringify({ name: playlistName, brief: { eventType: "Imported" }, tracks }));
+        sessionStorage.setItem("zanzibar:draft", JSON.stringify({ name: playlistName, brief: { eventType: "Imported" }, tracks }));
         await navigate({ to: "/set/$id", params: { id: "draft" } });
       }
     } catch (err: any) {

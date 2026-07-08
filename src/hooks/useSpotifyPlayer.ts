@@ -112,7 +112,7 @@ export function useSpotifyPlayer(
         await loadSdk();
         if (!mounted) return;
         const player = new window.Spotify.Player({
-          name: "VibeDeck",
+          name: "Zanzibar",
           getOAuthToken: async (cb: (t: string) => void) => {
             const tok = await getAccessToken();
             if (tok) cb(tok);
@@ -140,7 +140,7 @@ export function useSpotifyPlayer(
           mounted && setError(message + " (Spotify Premium required)"));
         player.addListener("playback_error", ({ message }: any) => mounted && setError(message));
         player.addListener("autoplay_failed", () =>
-          mounted && setError("Browser blocked audio start. Press Play once in VibeDeck, then keep this tab open."));
+          mounted && setError("Browser blocked audio start. Press Play once in Zanzibar, then keep this tab open."));
         player.addListener("player_state_changed", (state: any) => {
           if (!mounted || !state) return;
           onStateRef.current?.({

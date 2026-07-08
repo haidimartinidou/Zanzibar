@@ -140,7 +140,7 @@ function VibePage() {
         if (insErr) throw insErr;
         id = row.id;
       } else {
-        sessionStorage.setItem("vibedeck:draft", JSON.stringify({ name, brief: finalBrief, tracks }));
+        sessionStorage.setItem("zanzibar:draft", JSON.stringify({ name, brief: finalBrief, tracks }));
       }
 
       if (id) {
