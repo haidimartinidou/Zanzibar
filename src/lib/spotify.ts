@@ -5,6 +5,7 @@ const REFRESH_KEY = "vibedeck:spotify_refresh";
 const EXPIRES_KEY = "vibedeck:spotify_expires";
 const VERIFIER_KEY = "vibedeck:spotify_verifier";
 const RETURN_KEY = "vibedeck:spotify_return";
+const SCOPES_KEY = "vibedeck:spotify_scopes";
 
 export const SCOPES = [
   "streaming",
@@ -117,10 +118,18 @@ export async function exchangeCode(code: string) {
   localStorage.removeItem(VERIFIER_KEY);
 }
 
-function saveTokens(t: { access_token: string; refresh_token?: string; expires_in: number }) {
+function saveTokens(t: { access_token: string; refresh_token?: string; expires_in: number; scope?: string }) {
   localStorage.setItem(TOKEN_KEY, t.access_token);
   if (t.refresh_token) localStorage.setItem(REFRESH_KEY, t.refresh_token);
   localStorage.setItem(EXPIRES_KEY, String(Date.now() + t.expires_in * 1000 - 30_000));
+  if (t.scope) localStorage.setItem(SCOPES_KEY, t.scope);
+}
+
+export function needsSpotifyReconnect(): boolean {
+  if (typeof window === "undefined") return false;
+  if (!localStorage.getItem(TOKEN_KEY)) return false;
+  const granted = localStorage.getItem(SCOPES_KEY) ?? "";
+  return SCOPES.split(" ").some((s) => !granted.split(" ").includes(s));
 }
 
 async function refresh(): Promise<string | null> {
@@ -154,6 +163,7 @@ export function logoutSpotify() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(REFRESH_KEY);
   localStorage.removeItem(EXPIRES_KEY);
+  localStorage.removeItem(SCOPES_KEY);
 }
 
 export function consumeReturnPath() {

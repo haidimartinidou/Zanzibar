@@ -2,13 +2,17 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { HoloLogo } from "@/components/HoloLogo";
+import { needsSpotifyReconnect, startSpotifyLogin } from "@/lib/spotify";
+import { toast } from "sonner";
 
 export function SiteHeader() {
   const [email, setEmail] = useState<string | null>(null);
+  const [showReconnectBanner, setShowReconnectBanner] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setEmail(data.session?.user.email ?? null));
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setEmail(s?.user.email ?? null));
+    setShowReconnectBanner(needsSpotifyReconnect());
     return () => sub.subscription.unsubscribe();
   }, []);
 
@@ -101,6 +105,61 @@ export function SiteHeader() {
           </nav>
         </div>
       </header>
+
+      {showReconnectBanner && (
+        <div
+          role="alert"
+          style={{
+            background: "#FFC24D",
+            borderBottom: "1.5px solid rgba(122,18,0,0.18)",
+            padding: "12px 24px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+            flexWrap: "wrap",
+            fontFamily: "'Poppins', system-ui, sans-serif",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flex: 1, minWidth: 0 }}>
+            <span style={{ fontSize: 18, flexShrink: 0 }}>ℹ️</span>
+            <div>
+              <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#7A1200" }}>
+                Spotify needs a quick reconnect — this is not a bug.
+              </p>
+              <p style={{ margin: "3px 0 0", fontSize: 12, color: "#7A1200", lineHeight: 1.5 }}>
+                We added new features (Save to Spotify &amp; Import playlist) that require two extra permissions from Spotify.
+                Your old connection only has the original ones. Reconnecting takes one click and keeps everything else intact.
+              </p>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+            <button
+              onClick={async () => {
+                try { await startSpotifyLogin(window.location.pathname); }
+                catch (e: any) { toast.error(e?.message ?? "Failed to start Spotify login"); }
+              }}
+              style={{
+                background: "#7A1200", color: "#FFF3B0", border: "none", borderRadius: 999,
+                padding: "8px 18px", fontFamily: "'Fredoka', system-ui, sans-serif",
+                fontWeight: 700, fontSize: 14, cursor: "pointer", whiteSpace: "nowrap",
+              }}
+            >
+              Reconnect Spotify
+            </button>
+            <button
+              onClick={() => setShowReconnectBanner(false)}
+              aria-label="Dismiss"
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                color: "#7A1200", fontSize: 18, lineHeight: 1, padding: "4px 6px", opacity: 0.6,
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
