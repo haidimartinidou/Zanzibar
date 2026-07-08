@@ -14,12 +14,13 @@ import type { Track, Playlist, TransitionMode } from "@/lib/types";
 import {
   isSpotifyConnected, startSpotifyLogin, searchTrack, searchTracks,
   transferPlayback, transferAndPlay, pausePlayback, resumePlayback, logoutSpotify, heuristicStartMs,
-  getAudioAnalysis, snapToPhrase,
+  getAudioAnalysis, snapToPhrase, createSpotifyPlaylistAndAddTracks,
   type ResolvedTrack, type SearchResult,
 } from "@/lib/spotify";
 import { useSpotifyPlayer, type SpotifyState } from "@/hooks/useSpotifyPlayer";
 import { ZanzibarPlant } from "@/components/ZanzibarPlant";
 import { OrderRecap } from "@/components/OrderRecap";
+import { DJLoading } from "@/components/DJLoading";
 
 export const Route = createFileRoute("/set/$id")({ component: SetPage });
 
@@ -351,7 +352,12 @@ function SetPage() {
   // Cleanup on unmount.
   useEffect(() => () => { clearTimers(); }, [clearTimers]);
 
-  if (!pl) return <div className="min-h-screen"><SiteHeader /><p className="container px-4 py-12">Loading...</p></div>;
+  if (!pl) return (
+    <div style={{ minHeight: "100vh", background: "#FFF6D8" }}>
+      <SiteHeader />
+      <DJLoading label="loading your set..." />
+    </div>
+  );
 
   const updateTracks = (tracks: Track[]) => { setPl({ ...pl, tracks }); setDirty(true); };
   const reorder = (i: number, dir: -1 | 1) => {
@@ -427,6 +433,25 @@ function SetPage() {
     toast.success("Saved");
   };
 
+  const saveToSpotify = async () => {
+    if (!spotifyOn) return toast.error("Connect Spotify first");
+    const toastId = toast.loading("Resolving tracks…");
+    try {
+      const uris: string[] = [];
+      for (const t of pl.tracks) {
+        const info = await resolve(t);
+        if (info) uris.push(info.uri);
+      }
+      if (uris.length === 0) throw new Error("No tracks could be found on Spotify");
+      toast.loading("Creating Spotify playlist…", { id: toastId });
+      const url = await createSpotifyPlaylistAndAddTracks(pl.name, uris);
+      toast.success("Playlist saved to Spotify!", { id: toastId });
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (e: any) {
+      toast.error(e.message ?? "Couldn't save to Spotify", { id: toastId });
+    }
+  };
+
   const trackCutSec = (t: Track) => computeCutSec(t, t.startMs ?? 0);
   const totalSecs = pl.tracks.reduce((s, t) => s + trackCutSec(t), 0);
   const track = pl.tracks[current];
@@ -469,61 +494,181 @@ function SetPage() {
   };
 
   return (
-    <div className="min-h-screen pb-40">
+    <div style={{ minHeight: "100vh", background: "#FFF6D8", color: "#7A1200", fontFamily: "'Poppins', system-ui, sans-serif", paddingBottom: 120 }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Poppins:wght@400;600&display=swap');
+        .zz-track-row {
+          border-radius: 20px;
+          border: 1.5px solid rgba(228,19,12,0.18);
+          background: #FFFCE0;
+          padding: 16px 18px;
+          transition: border-color 160ms ease;
+        }
+        .zz-track-row.zz-active {
+          border-color: #E4130C;
+          background: #FFF3E0;
+          box-shadow: 0 6px 24px rgba(228,19,12,0.14);
+        }
+        .zz-play-btn {
+          width: 40px; height: 40px; border-radius: 50%; border: none; cursor: pointer;
+          display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+          background: #E4130C; color: #FFF3B0;
+          box-shadow: 0 6px 18px rgba(228,19,12,0.28);
+          transition: opacity 140ms ease;
+        }
+        .zz-play-btn:hover:not(:disabled) { opacity: 0.88; }
+        .zz-play-btn:disabled { background: rgba(122,18,0,0.15); color: rgba(122,18,0,0.4); cursor: not-allowed; box-shadow: none; }
+        .zz-ctrl-box {
+          display: flex; align-items: center; gap: 4px;
+          border: 1px solid rgba(228,19,12,0.22); border-radius: 10px;
+          background: #FFF6D8; padding: 4px 8px; font-size: 12px;
+        }
+        .zz-ctrl-input {
+          width: 44px; background: transparent; text-align: right; font-family: monospace;
+          outline: none; color: #7A1200; border: none;
+        }
+        .zz-ctrl-label { color: #B4740A; font-size: 11px; }
+        .zz-auto-btn {
+          border: 1px solid rgba(228,19,12,0.22); border-radius: 8px;
+          padding: 3px 7px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px;
+          background: transparent; color: #B4740A; cursor: pointer; transition: all 140ms ease;
+        }
+        .zz-auto-btn.active { border-color: #E4130C; background: rgba(228,19,12,0.08); color: #E4130C; }
+        .zz-icon-btn {
+          width: 28px; height: 28px; border: none; background: none; cursor: pointer;
+          color: rgba(122,18,0,0.45); display: flex; align-items: center; justify-content: center;
+          border-radius: 8px; transition: all 140ms ease;
+        }
+        .zz-icon-btn:hover { color: #E4130C; background: rgba(228,19,12,0.08); }
+        .zz-icon-btn.danger:hover { color: #E4130C; }
+        .zz-add-song {
+          display: flex; align-items: center; gap: 6px;
+          border: 1.5px dashed rgba(228,19,12,0.2); border-radius: 999px;
+          background: transparent; color: rgba(122,18,0,0.5); cursor: pointer;
+          padding: 4px 14px; font-size: 12px; transition: all 140ms ease;
+        }
+        .zz-add-song:hover { border-color: #E4130C; color: #E4130C; }
+        .zz-spotify-bar {
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 12px; flex-wrap: wrap;
+          border-radius: 18px; border: 1.5px solid rgba(228,19,12,0.16);
+          background: #FFFCE0; padding: 12px 18px; font-size: 13px;
+          margin-bottom: 16px;
+        }
+        .zz-connect-btn {
+          background: #1DB954; color: #fff; border: none; border-radius: 999px;
+          padding: 8px 18px; font-weight: 700; font-size: 13px; cursor: pointer;
+          font-family: 'Poppins', sans-serif; transition: opacity 140ms ease;
+        }
+        .zz-connect-btn:hover { opacity: 0.88; }
+        .zz-save-spotify-btn {
+          background: #1DB954; color: #fff; border: none; border-radius: 999px;
+          padding: 8px 18px; font-weight: 700; font-size: 13px; cursor: pointer;
+          font-family: 'Poppins', sans-serif; display: flex; align-items: center; gap: 6px;
+          transition: opacity 140ms ease;
+        }
+        .zz-save-spotify-btn:hover { opacity: 0.88; }
+        .zz-save-zanzibar-btn {
+          background: #E4130C; color: #FFF3B0; border: none; border-radius: 999px;
+          padding: 8px 18px; font-family: 'Fredoka', sans-serif; font-weight: 700;
+          font-size: 15px; cursor: pointer; box-shadow: 0 6px 18px rgba(228,19,12,0.22);
+          display: flex; align-items: center; gap: 6px; transition: opacity 140ms ease;
+        }
+        .zz-save-zanzibar-btn:hover:not(:disabled) { opacity: 0.88; }
+        .zz-save-zanzibar-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+        .zz-player-bar {
+          position: fixed; inset: auto 0 0 0; z-index: 40;
+          background: #FFFCE0; border-top: 1.5px solid rgba(228,19,12,0.18);
+        }
+        .zz-player-inner {
+          max-width: 820px; margin: 0 auto; display: flex; align-items: center; gap: 16px;
+          padding: 12px 24px;
+        }
+        .zz-player-play {
+          width: 52px; height: 52px; border-radius: 50%; border: none; cursor: pointer;
+          background: #E4130C; color: #FFF3B0;
+          box-shadow: 0 8px 24px rgba(228,19,12,0.3); flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center;
+          transition: opacity 140ms ease;
+        }
+        .zz-player-play:hover { opacity: 0.88; }
+        .zz-skip-btn {
+          background: none; border: none; cursor: pointer;
+          color: rgba(122,18,0,0.6); padding: 8px; border-radius: 10px;
+          transition: color 140ms ease;
+        }
+        .zz-skip-btn:hover { color: #E4130C; }
+        .zz-recap-btn {
+          position: fixed; right: 16px; top: 80px; z-index: 30;
+          display: flex; align-items: center; gap: 6px;
+          border: 1.5px solid rgba(228,19,12,0.28); border-radius: 999px;
+          background: #FFFCE0; padding: 7px 14px; font-size: 12px; font-weight: 600;
+          cursor: pointer; color: #7A1200; box-shadow: 0 4px 14px rgba(122,18,0,0.1);
+          transition: border-color 140ms ease;
+        }
+        .zz-recap-btn:hover { border-color: #E4130C; }
+        @media (max-width: 680px) {
+          .zz-track-controls { display: none !important; }
+        }
+      `}</style>
+
       <SiteHeader />
 
-      {/* Energy plant lives inside the playlist column now (see below). */}
-
-
-      {/* Order Recap floating button (top-right). */}
-      <button
-        type="button"
-        onClick={() => setRecapOpen(true)}
-        className="fixed right-4 top-20 z-30 flex items-center gap-2 rounded-full border border-primary/40 bg-card/80 px-3 py-2 text-xs font-medium shadow-glow backdrop-blur transition-all hover:border-primary hover:bg-primary/10"
-        title="Show the choices you made"
-      >
-        <ClipboardList className="h-4 w-4 text-primary" />
-        Order Recap
+      {/* Order Recap */}
+      <button type="button" onClick={() => setRecapOpen(true)} className="zz-recap-btn">
+        <ClipboardList size={14} /> Order Recap
       </button>
-
       {recapOpen && <OrderRecap brief={pl.brief} onClose={() => setRecapOpen(false)} />}
 
-      <main className="container mx-auto max-w-3xl px-4 py-10">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <Input
+      <main style={{ maxWidth: 820, margin: "0 auto", padding: "40px 24px 40px" }}>
+
+        {/* Set title + action buttons */}
+        <div style={{ marginBottom: 24, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <input
               value={pl.name}
               onChange={(e) => { setPl({ ...pl, name: e.target.value }); setDirty(true); }}
-              className="border-0 bg-transparent !text-3xl font-bold focus-visible:ring-0 px-0"
+              style={{
+                border: "none", background: "transparent", outline: "none",
+                fontFamily: "'Fredoka', system-ui, sans-serif", fontWeight: 700, fontSize: 38,
+                color: "#E4130C", width: "100%", padding: 0,
+              }}
             />
-            <p className="text-sm text-muted-foreground">
+            <p style={{ margin: "4px 0 0", fontSize: 13, color: "#B4740A" }}>
               {pl.tracks.length} tracks · {fmt(totalSecs)} total · {pl.brief.eventType}
             </p>
           </div>
-          {id !== "draft" && (
-            <Button onClick={save} disabled={!dirty} variant={dirty ? "default" : "outline"} className={dirty ? "bg-gradient-sunset shadow-glow bg-lime-400 text-fuchsia-700 border-lime-400" : ""}>
-              <Save className="mr-1 h-4 w-4" /> {dirty ? "Save" : "Saved"}
-            </Button>
-          )}
-        </div>
-
-        <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card/40 p-3 text-sm">
-          <div className="flex min-w-0 items-center gap-2">
-            <Music2 className="h-4 w-4 shrink-0 text-primary" />
-            {spotifyOn ? (
-              <span className="truncate text-muted-foreground">
-                Spotify connected{spReady ? " · player ready" : " · loading player..."}
-              </span>
-            ) : (
-              <span className="truncate text-muted-foreground">
-                Connect Spotify Premium to play full tracks in-app.
-              </span>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            {spotifyOn && (
+              <button className="zz-save-spotify-btn" onClick={saveToSpotify} title="Save full tracks to your Spotify account">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+                Save to Spotify
+              </button>
+            )}
+            {id !== "draft" && (
+              <button className="zz-save-zanzibar-btn" onClick={save} disabled={!dirty}>
+                <Save size={14} /> {dirty ? "Save changes" : "Saved"}
+              </button>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <span className="hidden text-xs text-muted-foreground sm:inline">Transition</span>
+        </div>
+
+        {/* Spotify + transition bar */}
+        <div className="zz-spotify-bar">
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <Music2 size={16} style={{ color: "#E4130C", flexShrink: 0 }} />
+            <span style={{ color: "#B4740A", fontSize: 13 }}>
+              {spotifyOn
+                ? `Spotify connected${spReady ? " · player ready" : " · loading player…"}`
+                : "Connect Spotify Premium to play full tracks in-app."}
+            </span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 12, color: "#B4740A" }}>Transition</span>
             <Select value={transitionMode} onValueChange={(v) => setTransition(v as TransitionMode)}>
-              <SelectTrigger className="h-8 w-[130px] text-xs"><SelectValue /></SelectTrigger>
+              <SelectTrigger style={{ height: 32, fontSize: 12, width: 130, borderColor: "rgba(228,19,12,0.22)", background: "#FFF6D8", color: "#7A1200" }}>
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="hard">Hard cut</SelectItem>
                 <SelectItem value="smooth">Smooth (1.5s)</SelectItem>
@@ -531,152 +676,132 @@ function SetPage() {
               </SelectContent>
             </Select>
             {spotifyOn ? (
-              <Button size="sm" variant="ghost" onClick={() => { logoutSpotify(); setSpotifyOn(false); }}>
+              <button
+                onClick={() => { logoutSpotify(); setSpotifyOn(false); }}
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#B4740A", fontFamily: "'Poppins', sans-serif" }}
+              >
                 Disconnect
-              </Button>
+              </button>
             ) : (
-              <Button
-                size="sm"
-                className="bg-gradient-sunset shadow-glow bg-lime-400 text-fuchsia-700 border-lime-400"
+              <button
+                className="zz-connect-btn"
                 onClick={async () => {
-                  try {
-                    await startSpotifyLogin(window.location.pathname);
-                  } catch (e: any) {
-                    toast.error(e?.message ?? 'Failed to start Spotify login');
-                  }
+                  try { await startSpotifyLogin(window.location.pathname); }
+                  catch (e: any) { toast.error(e?.message ?? "Failed to start Spotify login"); }
                 }}
               >
                 Connect Spotify
-              </Button>
+              </button>
             )}
           </div>
         </div>
 
         {spotifyOn && isFramed && (
-          <div className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-primary/50 bg-primary/10 p-3 text-sm shadow-glow">
-            <div className="flex min-w-0 gap-2">
-              <Volume2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              <p className="text-muted-foreground">
-                Spotify can show "Playing on VibeDeck" but stay silent in some embedded contexts. Open the app directly for browser audio.
-              </p>
-            </div>
-            <Button size="sm" className="shrink-0 bg-gradient-sunset shadow-glow" onClick={() => window.open(window.location.href, "_blank", "noopener,noreferrer")}>
+          <div style={{ marginBottom: 16, borderRadius: 18, border: "1.5px solid #E4130C", background: "rgba(228,19,12,0.06)", padding: "12px 18px", display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13 }}>
+            <Volume2 size={16} style={{ color: "#E4130C", flexShrink: 0, marginTop: 1 }} />
+            <p style={{ margin: 0, color: "#7A1200", flex: 1 }}>
+              Spotify may stay silent in embedded contexts. Open the app directly for browser audio.
+            </p>
+            <button
+              onClick={() => window.open(window.location.href, "_blank", "noopener,noreferrer")}
+              style={{ background: "#E4130C", color: "#FFF3B0", border: "none", borderRadius: 999, padding: "6px 14px", fontFamily: "'Fredoka', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", flexShrink: 0 }}
+            >
               Open tab
-            </Button>
+            </button>
           </div>
         )}
 
-        <div className="space-y-2">
+        {/* Track list */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {pl.tracks.map((t, i) => {
             const auto = t.autoStart ?? true;
             const startMs = startDisplayMs(t);
             const isCur = i === current;
             return (
               <div key={t.id}>
-                <div
-                  className={`rounded-2xl border p-4 transition-all ${
-                    isCur ? "border-primary bg-primary/5 shadow-glow" : "border-border/60 bg-card/40"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
+                <div className={`zz-track-row${isCur ? " zz-active" : ""}`}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <button
+                      className="zz-play-btn"
                       onClick={() => onRowClick(i)}
                       disabled={!spotifyOn}
                       title={spotifyOn ? "Play track" : "Connect Spotify to play"}
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full shadow-glow border-lime-400 transition-opacity ${
-                        spotifyOn
-                          ? "bg-gradient-sunset text-primary-foreground bg-lime-400 text-fuchsia-700 cursor-pointer hover:opacity-90"
-                          : "bg-muted text-muted-foreground cursor-not-allowed opacity-50"
-                      }`}
                     >
-                      {isCur && desiredPlaying && !spotifyPaused ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 pl-0.5" />}
+                      {isCur && desiredPlaying && !spotifyPaused ? <Pause size={16} /> : <Play size={16} style={{ marginLeft: 2 }} />}
                     </button>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate font-semibold">{t.title}</p>
-                        <a href={search(t)} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground">
-                          <ExternalLink className="h-3.5 w-3.5" />
+
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontWeight: 700, fontSize: 15, color: "#7A1200", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
+                        <a href={search(t)} target="_blank" rel="noreferrer" style={{ color: "#B4740A", display: "flex" }}>
+                          <ExternalLink size={13} />
                         </a>
                         {t.globalEar && (
-                          <span
-                            className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary"
-                            title={`Global Ear pick — discover an artist from outside the English-speaking scene${t.language ? ` (${t.language})` : ""}.`}
-                          >
+                          <span style={{ fontSize: 10, fontWeight: 700, background: "rgba(228,19,12,0.1)", border: "1px solid rgba(228,19,12,0.3)", borderRadius: 999, padding: "2px 8px", color: "#E4130C" }}>
                             🌍 {t.language ?? "Global"}
                           </span>
                         )}
                       </div>
-                      <p className="truncate text-sm text-muted-foreground">{t.artist}</p>
-                      <p className="mt-1 text-xs italic text-muted-foreground/80">{t.reason}</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 13, color: "#B4740A", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.artist}</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 11, fontStyle: "italic", color: "rgba(122,18,0,0.55)" }}>{t.reason}</p>
                     </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <div className="flex items-center gap-1 text-xs">
-                        <div className="flex items-center gap-1 rounded-lg border border-border/60 bg-background/40 px-2 py-1">
-                          <span className="text-muted-foreground">start</span>
+
+                    {/* Controls */}
+                    <div className="zz-track-controls" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <div className="zz-ctrl-box">
+                          <span className="zz-ctrl-label">start</span>
                           <input
+                            className="zz-ctrl-input"
                             type="text"
                             value={fmtMs(startMs)}
                             onChange={(e) => {
                               const [m, s] = e.target.value.split(":").map((n) => Number(n) || 0);
                               setStart(i, (m * 60 + s) * 1000);
                             }}
-                            className="w-12 bg-transparent text-right font-mono outline-none"
                           />
                         </div>
-                        <button
-                          onClick={() => toggleAuto(i)}
-                          className={`rounded-md border px-1.5 py-1 text-[10px] uppercase tracking-wide ${
-                            auto ? "border-primary bg-primary/15 text-primary" : "border-border/60 text-muted-foreground"
-                          }`}
-                          title="Auto-pick start based on track energy"
-                        >
-                          Auto
-                        </button>
+                        <button className={`zz-auto-btn${auto ? " active" : ""}`} onClick={() => toggleAuto(i)} title="Auto-pick start">Auto</button>
                       </div>
-                      <div className="flex items-center gap-1 text-xs">
-                        <div className="flex items-center gap-1 rounded-lg border border-border/60 bg-background/40 px-2 py-1">
-                          <span className="text-muted-foreground">end</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <div className="zz-ctrl-box">
+                          <span className="zz-ctrl-label">end</span>
                           <input
+                            className="zz-ctrl-input"
                             type="text"
                             value={typeof t.endMs === "number" ? fmtMs(t.endMs) : fmtMs(startMs + t.playSeconds * 1000)}
                             onChange={(e) => {
                               const [m, s] = e.target.value.split(":").map((n) => Number(n) || 0);
                               setEnd(i, (m * 60 + s) * 1000);
                             }}
-                            className="w-12 bg-transparent text-right font-mono outline-none"
                             title="End point in the source track"
                           />
                         </div>
                         {typeof t.endMs === "number" && (
-                          <button
-                            onClick={() => clearEnd(i)}
-                            className="rounded-md border border-border/60 px-1.5 py-1 text-[10px] uppercase tracking-wide text-muted-foreground"
-                            title="Use cut length instead of explicit end point"
-                          >
-                            Clear
-                          </button>
+                          <button className="zz-auto-btn" onClick={() => clearEnd(i)} title="Use cut length">Clear</button>
                         )}
                       </div>
-                      <div className="flex items-center gap-1 text-xs">
-                        <div className="flex items-center gap-1 rounded-lg border border-border/60 bg-background/40 px-2 py-1">
-                          <span className="text-muted-foreground">cut</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <div className="zz-ctrl-box">
+                          <span className="zz-ctrl-label">cut</span>
                           <input
+                            className="zz-ctrl-input"
                             type="number"
                             value={Math.round(trackCutSec(t))}
                             onChange={(e) => { setLength(i, Number(e.target.value)); clearEnd(i); }}
-                            className="w-12 bg-transparent text-right font-mono outline-none"
                           />
-                          <span className="text-muted-foreground">s</span>
+                          <span className="zz-ctrl-label">s</span>
                         </div>
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => reorder(i, -1)}><ArrowUp className="h-3 w-3" /></Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => reorder(i, 1)}><ArrowDown className="h-3 w-3" /></Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => remove(i)}><Trash2 className="h-3 w-3" /></Button>
+                        <button className="zz-icon-btn" onClick={() => reorder(i, -1)}><ArrowUp size={13} /></button>
+                        <button className="zz-icon-btn" onClick={() => reorder(i, 1)}><ArrowDown size={13} /></button>
+                        <button className="zz-icon-btn danger" onClick={() => remove(i)}><Trash2 size={13} /></button>
                       </div>
                     </div>
                   </div>
+
                   {isCur && (
-                    <div className="mt-3 h-1 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full bg-gradient-sunset transition-all" style={{ width: `${pct}%` }} />
+                    <div style={{ marginTop: 12, height: 4, borderRadius: 999, background: "rgba(228,19,12,0.15)", overflow: "hidden" }}>
+                      <div style={{ height: "100%", background: "#E4130C", width: `${pct}%`, transition: "width 0.25s linear" }} />
                     </div>
                   )}
                 </div>
@@ -688,14 +813,9 @@ function SetPage() {
                     onPick={(picked) => insertAfter(i, picked)}
                   />
                 ) : (
-                  <div className="my-1 flex justify-center">
-                    <button
-                      type="button"
-                      onClick={() => setInsertAt(i)}
-                      className="group flex items-center gap-1 rounded-full border border-dashed border-border/60 bg-background/40 px-3 py-1 text-xs text-muted-foreground transition-all hover:border-primary hover:text-primary"
-                      title="Add a song after this one"
-                    >
-                      <Plus className="h-3 w-3" /> Add song here
+                  <div style={{ display: "flex", justifyContent: "center", margin: "6px 0" }}>
+                    <button type="button" className="zz-add-song" onClick={() => setInsertAt(i)} title="Add a song after this one">
+                      <Plus size={12} /> Add song here
                     </button>
                   </div>
                 )}
@@ -704,44 +824,40 @@ function SetPage() {
           })}
         </div>
 
-
         {id === "draft" && (
-          <div className="mt-6 rounded-2xl border border-primary/40 bg-primary/5 p-4 text-sm">
-            <Link to="/auth" className="font-semibold text-primary">Sign in</Link>
-            <span className="text-muted-foreground"> to save this set to your library.</span>
+          <div style={{ marginTop: 24, borderRadius: 18, border: "1.5px solid rgba(228,19,12,0.28)", background: "rgba(228,19,12,0.05)", padding: "16px 20px", fontSize: 14 }}>
+            <Link to="/auth" style={{ fontWeight: 700, color: "#E4130C" }}>Sign in</Link>
+            <span style={{ color: "#B4740A" }}> to save this set to your library.</span>
           </div>
         )}
       </main>
 
-      {/* Persistent energy plant — fixed sidebar (desktop only). */}
-      <div className="pointer-events-none fixed right-4 top-1/2 z-30 hidden -translate-y-1/2 sm:block">
-        <div className="w-28 lg:w-32">
+      {/* Persistent energy plant — desktop only */}
+      <div style={{ position: "fixed", right: 16, top: "50%", transform: "translateY(-50%)", zIndex: 30, pointerEvents: "none", display: "none" }} className="sm-plant-sidebar">
+        <div style={{ width: 112 }}>
           <ZanzibarPlant energy={track?.energy ?? 5} className="h-auto w-full opacity-95" />
-          <p className="mt-1 text-center text-[10px] uppercase tracking-wider text-muted-foreground">
+          <p style={{ marginTop: 4, textAlign: "center", fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: "#B4740A" }}>
             Energy {track?.energy ?? 5}/10
           </p>
         </div>
       </div>
 
+      {/* Bottom player bar */}
       {track && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/90 backdrop-blur-xl">
-          <div className="container mx-auto flex max-w-3xl items-center gap-4 px-4 py-3">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">{track.title}</p>
-              <p className="truncate text-xs text-muted-foreground">{track.artist}</p>
+        <div className="zz-player-bar">
+          <div className="zz-player-inner">
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#7A1200", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.title}</p>
+              <p style={{ margin: 0, fontSize: 12, color: "#B4740A", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.artist}</p>
             </div>
-            <div className="flex items-center gap-1">
-              <Button size="icon" variant="ghost" onClick={prev}><SkipBack className="h-4 w-4" /></Button>
-              <Button
-                size="icon"
-                onClick={onBottomToggle}
-                className={`h-12 w-12 rounded-full bg-gradient-sunset shadow-glow bg-lime-400 text-fuchsia-700 border-lime-400 ${desiredPlaying && !spotifyPaused ? "animate-pulse-ring" : ""}`}
-              >
-                {showPlay ? <Play className="h-5 w-5 pl-0.5" /> : <Pause className="h-5 w-5" />}
-              </Button>
-              <Button size="icon" variant="ghost" onClick={next}><SkipForward className="h-4 w-4" /></Button>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <button className="zz-skip-btn" onClick={prev}><SkipBack size={18} /></button>
+              <button className="zz-player-play" onClick={onBottomToggle}>
+                {showPlay ? <Play size={20} style={{ marginLeft: 2 }} /> : <Pause size={20} />}
+              </button>
+              <button className="zz-skip-btn" onClick={next}><SkipForward size={18} /></button>
             </div>
-            <div className="hidden w-24 text-right font-mono text-xs text-muted-foreground tabular-nums sm:block">
+            <div style={{ minWidth: 60, textAlign: "right", fontFamily: "monospace", fontSize: 12, color: "#B4740A" }}>
               {fmt(elapsed)} / {fmt(currentCut)}
             </div>
           </div>
@@ -782,36 +898,43 @@ function InsertSongPanel({
   }, [q, spotifyOn]);
 
   return (
-    <div className="my-2 rounded-2xl border border-primary/40 bg-primary/5 p-3 shadow-glow">
-      <div className="flex items-center gap-2">
-        <Search className="h-4 w-4 text-primary" />
+    <div style={{ margin: "8px 0", borderRadius: 18, border: "1.5px solid rgba(228,19,12,0.3)", background: "rgba(255,243,176,0.6)", padding: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <Search size={14} style={{ color: "#E4130C", flexShrink: 0 }} />
         <Input
           autoFocus
           placeholder={spotifyOn ? "Search song or artist…" : "Connect Spotify to search"}
           value={q}
           onChange={(e) => setQ(e.target.value)}
           disabled={!spotifyOn}
-          className="h-8"
+          style={{ height: 34, fontSize: 13, borderColor: "rgba(228,19,12,0.22)", background: "#FFF6D8", color: "#7A1200" }}
         />
-        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onCancel}>
-          <X className="h-3 w-3" />
-        </Button>
+        <button onClick={onCancel} style={{ background: "none", border: "none", cursor: "pointer", color: "#B4740A", padding: 4 }}>
+          <X size={14} />
+        </button>
       </div>
-      {loading && <p className="mt-2 text-xs text-muted-foreground">Searching…</p>}
+      {loading && <p style={{ margin: "8px 0 0", fontSize: 12, color: "#B4740A" }}>Searching…</p>}
       {results.length > 0 && (
-        <ul className="mt-2 max-h-64 space-y-1 overflow-auto">
+        <ul style={{ margin: "8px 0 0", maxHeight: 240, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4, padding: 0, listStyle: "none" }}>
           {results.map((r) => (
             <li key={r.id}>
               <button
                 type="button"
                 onClick={() => onPick(r)}
-                className="flex w-full items-center justify-between gap-3 rounded-lg border border-border/40 bg-background/60 px-3 py-2 text-left text-sm transition-all hover:border-primary hover:bg-primary/10"
+                style={{
+                  width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                  borderRadius: 12, border: "1px solid rgba(228,19,12,0.18)", background: "#FFFCE0",
+                  padding: "8px 12px", textAlign: "left", fontSize: 13, cursor: "pointer",
+                  transition: "border-color 140ms ease",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#E4130C")}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = "rgba(228,19,12,0.18)")}
               >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{r.title}</span>
-                  <span className="block truncate text-xs text-muted-foreground">{r.artist}</span>
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600, color: "#7A1200" }}>{r.title}</span>
+                  <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, color: "#B4740A" }}>{r.artist}</span>
                 </span>
-                <span className="font-mono text-xs text-muted-foreground">{fmtMs(r.durationMs)}</span>
+                <span style={{ fontFamily: "monospace", fontSize: 11, color: "#B4740A", flexShrink: 0 }}>{fmtMs(r.durationMs)}</span>
               </button>
             </li>
           ))}

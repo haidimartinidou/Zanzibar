@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { DJLoading } from "@/components/DJLoading";
 import { supabase } from "@/integrations/supabase/client";
 import { generatePlaylist } from "@/lib/generate-playlist";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -634,30 +635,32 @@ function VibePage() {
             </div>
           )}
 
-          <div className="mt-8 flex justify-between gap-3">
-            <Button
-              variant="ghost"
-              onClick={() => setStep(Math.max(0, step - 1))}
-              disabled={step === 0 || loading}
-              className="zz-vibe-secondary"
-            >
-              <ArrowLeft className="mr-1 h-4 w-4" /> Back
-            </Button>
+          {loading ? (
+            <DJLoading />
+          ) : (
+            <div className="mt-8 flex justify-between gap-3">
+              <Button
+                variant="ghost"
+                onClick={() => setStep(Math.max(0, step - 1))}
+                disabled={step === 0}
+                className="zz-vibe-secondary"
+              >
+                <ArrowLeft className="mr-1 h-4 w-4" /> Back
+              </Button>
 
-            <Button onClick={next} disabled={loading} className="zz-vibe-primary">
-              {loading ? (
-                <>Generating...</>
-              ) : step === steps.length - 1 ? (
-                <>
-                  <Sparkles className="mr-2 h-4 w-4" /> Build my set
-                </>
-              ) : (
-                <>
-                  Next <ArrowRight className="ml-1 h-4 w-4" />
-                </>
-              )}
-            </Button>
-          </div>
+              <Button onClick={next} className="zz-vibe-primary">
+                {step === steps.length - 1 ? (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" /> Build my set
+                  </>
+                ) : (
+                  <>
+                    Next <ArrowRight className="ml-1 h-4 w-4" />
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
         </div>
       </main>
     </div>

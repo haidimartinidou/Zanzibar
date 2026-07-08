@@ -12,6 +12,9 @@ export const SCOPES = [
   "user-read-private",
   "user-modify-playback-state",
   "user-read-playback-state",
+  "playlist-modify-public",
+  "playlist-modify-private",
+  "playlist-read-private",
 ].join(" ");
 
 export const REDIRECT_URI = () =>
@@ -351,6 +354,62 @@ export async function transferPlayback(deviceId: string) {
 export async function transferAndPlay(deviceId: string, uri: string, positionMs = 0) {
   await transferPlayback(deviceId);
   await playTrack(deviceId, uri, positionMs);
+}
+
+export async function getCurrentUserId(): Promise<string> {
+  const data = await api("/me");
+  return data.id;
+}
+
+export async function createSpotifyPlaylistAndAddTracks(
+  name: string,
+  trackUris: string[],
+): Promise<string> {
+  const userId = await getCurrentUserId();
+  const playlist = await api(`/users/${userId}/playlists`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, public: false, description: "Created by Zanzibar — full tracks, no cut-offs." }),
+  });
+  const playlistId = playlist.id;
+  for (let i = 0; i < trackUris.length; i += 100) {
+    await api(`/playlists/${playlistId}/tracks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uris: trackUris.slice(i, i + 100) }),
+    });
+  }
+  return `https://open.spotify.com/playlist/${playlistId}`;
+}
+
+export type SpotifyTrackInfo = {
+  title: string;
+  artist: string;
+  uri: string;
+  id: string;
+  durationMs: number;
+};
+
+export async function getSpotifyPlaylistTracks(playlistId: string): Promise<SpotifyTrackInfo[]> {
+  const results: SpotifyTrackInfo[] = [];
+  let nextPath: string | null = `/playlists/${playlistId}/tracks?limit=50&fields=next,items(track(id,name,uri,duration_ms,artists))`;
+  while (nextPath) {
+    const data = await api(nextPath);
+    const items: any[] = data?.items ?? [];
+    for (const item of items) {
+      const t = item?.track;
+      if (!t || !t.id) continue;
+      results.push({
+        title: t.name,
+        artist: (t.artists ?? []).map((a: any) => a.name).join(", "),
+        uri: t.uri,
+        id: t.id,
+        durationMs: t.duration_ms,
+      });
+    }
+    nextPath = data?.next ? data.next.replace("https://api.spotify.com/v1", "") : null;
+  }
+  return results;
 }
 
 export async function waitForConnectDevice(deviceId: string, options?: { attempts?: number; delayMs?: number }) {
