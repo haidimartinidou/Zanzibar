@@ -94,12 +94,7 @@ function VibePage() {
   const toggleVibe = (v: string) => {
     setBrief((b) => {
       const has = b.vibes.includes(v);
-      if (has) return { ...b, vibes: b.vibes.filter((x) => x !== v) };
-      if (b.vibes.length >= 3) {
-        toast.error("Max 3 styles to blend");
-        return b;
-      }
-      return { ...b, vibes: [...b.vibes, v] };
+      return { ...b, vibes: has ? b.vibes.filter((x) => x !== v) : [...b.vibes, v] };
     });
   };
 
@@ -350,7 +345,7 @@ function VibePage() {
           {step === 1 && (
             <div className="space-y-4">
               <p style={{ fontSize: 14, color: "#B4740A", margin: 0 }}>
-                Pick one or blend up to three. For example, Indie + Jazz for a warm, oddball dinner set.
+                Pick as many as you like. For example, Indie + Jazz + Soul for a warm, oddball dinner set.
               </p>
 
               <div className="zz-vibe-grid grid grid-cols-2 gap-3">
