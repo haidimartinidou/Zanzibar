@@ -121,6 +121,37 @@ function AboutPage() {
           ))}
         </div>
 
+        {/* Manifesto */}
+        <div
+          style={{
+            textAlign: "center",
+            padding: "52px 32px",
+            marginBottom: 24,
+            borderRadius: 28,
+            background: "radial-gradient(120% 90% at 18% 8%, #FFC24D 0%, #FF6A1F 32%, #FF2B12 62%, #E4130C 100%)",
+            color: "#FFF3B0",
+            position: "relative",
+            overflow: "hidden",
+          }}
+        >
+          <Noise />
+          <p
+            style={{
+              position: "relative",
+              fontFamily: "'Fredoka', system-ui, sans-serif",
+              fontWeight: 700,
+              fontSize: "clamp(22px, 4vw, 36px)",
+              lineHeight: 1.35,
+              margin: 0,
+              letterSpacing: 0.2,
+            }}
+          >
+            Zanzibar is a bar.<br />
+            Have a drink.<br />
+            We will play that funky music you imagine.
+          </p>
+        </div>
+
         {/* CTA */}
         <div
           style={{

@@ -116,7 +116,7 @@ export function HoloLogo({ className = "h-9 w-9" }: { className?: string }) {
                     <path
                       d={`M 0 0 Q ${l.sz*0.5} ${-l.sz*0.82} ${l.sz*1.85} 0 Q ${l.sz*0.5} ${l.sz*0.78} 0 0 Z`}
                       fill={`url(#${s.grad})`}
-                      stroke="oklch(0.22 0.06 280 / 0.5)" strokeWidth="0.45"
+                      stroke="oklch(0.72 0.22 25 / 0.55)" strokeWidth="0.45"
                     />
                     <path
                       d={`M ${l.sz*0.25} ${-l.sz*0.12} Q ${l.sz*0.6} ${-l.sz*0.48} ${l.sz*1.3} ${-l.sz*0.04}`}
