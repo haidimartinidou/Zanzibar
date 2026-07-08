@@ -74,6 +74,10 @@ Each "reason" must read like a DJ's note: WHY this song HERE, and how it bridges
         ).join("\n")
       : null;
 
+    const countries: string[] = Array.isArray(brief?.countries) && brief.countries.length
+      ? brief.countries
+      : [];
+
     const userPrompt = `Build a ${targetMinutes}-minute DJ set with ${trackCount} tracks.
 
 Event: ${brief.eventType}
@@ -81,9 +85,7 @@ Style blend: ${vibesList.join(" + ") || "open"}
 Overall target energy (1-10): ${brief.energy}
 Formality: ${brief.formality}
 Crowd: ${brief.crowd}
-${timelineDescription ? `\nTIMELINE — match the energy + style for each window in order:\n${timelineDescription}\n` : ""}${brief.globalEar ? `\nGLOBAL EAR 🌍 — The user opted in to discover global artists. Include AT LEAST ONE (ideally 1-3) tracks sung in a NON-ENGLISH language by artists from outside the US/UK that genuinely fit the vibe and energy. Pick songs likely to surprise and delight — not the obvious ones. Place them where they bridge well; in the "reason" briefly note the language and country of origin. CRITICAL: For EACH such non-English pick, set globalEar: true and set language to the song's primary sung language (e.g. "Portuguese", "Yoruba", "French"). Do NOT set globalEar on English-language tracks.\n` : ""}
-Notes: ${brief.notes || "none"}
-
+${timelineDescription ? `\nTIMELINE — match the energy + style for each window in order:\n${timelineDescription}\n` : ""}${countries.length > 0 ? `\nMANDATORY COUNTRY PICKS 🌍 — The user specifically requested music from these countries: ${countries.join(", ")}. This is NOT optional. You MUST include at least one real, well-known song per country (or at minimum one per every 1-2 countries for large lists). These tracks MUST be sung in the native language of that country OR be by a well-known artist from that country. Spread them naturally across the set where they fit the energy arc. For EVERY such country-specific pick: set globalEar: true, set language to the song's primary sung language. In the "reason", note the country and artist origin. If a country has multiple fitting songs, you can include more than one.\n` : brief.globalEar ? `\nGLOBAL EAR 🌍 — The user opted in to discover global artists. Include AT LEAST 2-3 tracks sung in a NON-ENGLISH language by artists from outside the US/UK that genuinely fit the vibe and energy. Pick songs likely to surprise and delight — not the obvious ones. Place them where they bridge well; in the "reason" briefly note the language and country of origin. CRITICAL: For EACH such non-English pick, set globalEar: true and set language to the song's primary sung language (e.g. "Portuguese", "Yoruba", "French"). Do NOT set globalEar on English-language tracks.\n` : ""}${brief.notes && brief.notes.trim() ? `\nHIGH-PRIORITY USER REQUIREMENTS — treat these as HARD REQUIREMENTS, not suggestions. The user will notice if these are ignored:\n"${brief.notes.trim()}"\nIf the notes mention specific languages, countries, artists, or songs — you MUST include them. Parse carefully.\n` : ""}
 Use REAL songs (real artist + real title). When multiple styles are listed, BLEND them — don't just stack one then the other. Find natural bridges between styles. When a TIMELINE is provided, sequence tracks so each window's energy and style match what's requested at that point in the night. Assign each track a playSeconds cut-off using the rules above. Provide a one-line "reason" explaining why each track fits this exact moment of the set.`;
 
     const resp = await fetch("https://api.openai.com/v1/chat/completions", {

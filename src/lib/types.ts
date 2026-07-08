@@ -17,6 +17,7 @@ export type VibeBrief = {
   notes?: string;
   timeline?: TimelinePhase[]; // optional per-window plan
   globalEar?: boolean;    // opt-in: include non-English tracks from global artists
+  countries?: string[];   // specific countries to draw music from
 };
 
 export type TransitionKind = "hard" | "smooth";

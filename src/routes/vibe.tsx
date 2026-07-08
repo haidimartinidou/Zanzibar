@@ -13,8 +13,9 @@ import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, Plus, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Plus, Sparkles, Trash2, X } from "lucide-react";
 import type { VibeBrief, Track, TimelinePhase, EnergyLevel } from "@/lib/types";
+import { ALL_COUNTRIES, FEATURED_COUNTRIES } from "@/lib/countries";
 
 export const Route = createFileRoute("/vibe")({ component: VibePage });
 
@@ -60,6 +61,8 @@ function VibePage() {
   const [loading, setLoading] = useState(false);
   const [useTimeline, setUseTimeline] = useState(false);
   const [globalEar, setGlobalEar] = useState(false);
+  const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
+  const [countrySearch, setCountrySearch] = useState("");
 
   const [timeline, setTimeline] = useState<TimelinePhase[]>([
     { minutes: 30, energy: "warmup" },
@@ -98,6 +101,20 @@ function VibePage() {
     });
   };
 
+  const toggleCountry = (name: string) => {
+    setSelectedCountries((prev) =>
+      prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name],
+    );
+    // Auto-enable Global Ear when a country is added
+    if (!selectedCountries.includes(name)) setGlobalEar(true);
+  };
+
+  const filteredCountries = countrySearch.trim()
+    ? ALL_COUNTRIES.filter((c) =>
+        c.name.toLowerCase().includes(countrySearch.toLowerCase()),
+      ).slice(0, 8)
+    : [];
+
   const updatePhase = (i: number, patch: Partial<TimelinePhase>) => {
     setTimeline((tl) => tl.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
   };
@@ -114,7 +131,8 @@ function VibePage() {
         vibe: brief.vibes.join(" + "),
         durationMinutes: useTimeline ? timelineTotal : brief.durationMinutes,
         timeline: useTimeline ? timeline : undefined,
-        globalEar,
+        globalEar: globalEar || selectedCountries.length > 0,
+        countries: selectedCountries.length > 0 ? selectedCountries : undefined,
       };
 
       const data = await generatePlaylist({ data: { brief: finalBrief } });
@@ -576,40 +594,141 @@ function VibePage() {
           )}
 
           {step === 4 && (
-            <div className="space-y-5">
-              <div
-                style={{
-                  borderRadius: 24,
-                  border: "1.5px solid rgba(228, 19, 12, 0.18)",
-                  background: "#FFF6D8",
-                  padding: 22,
-                }}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <Label className="zz-vibe-label text-base">Global Ear</Label>
-                    <p style={{ marginTop: 8, fontSize: 14, lineHeight: 1.6, color: "#B4740A" }}>
-                      When on, Zanzibar weaves in songs from around the world, including at least one
-                      non-English track that fits the room. When off, it sticks to English or to any
-                      language you specify in the final notes.
-                    </p>
-                  </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
-                  <div className="flex flex-col items-center gap-1">
-                    <Switch checked={globalEar} onCheckedChange={setGlobalEar} aria-label="Toggle Global Ear" />
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 800,
-                        textTransform: "uppercase",
-                        letterSpacing: 0.8,
-                        color: globalEar ? "#E4130C" : "#B4740A",
-                      }}
-                    >
-                      {globalEar ? "On" : "Off"}
-                    </span>
-                  </div>
+              {/* Toggle row */}
+              <div style={{ borderRadius: 20, border: "1.5px solid rgba(228,19,12,0.18)", background: "#FFF6D8", padding: "18px 20px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+                <div style={{ flex: 1 }}>
+                  <Label className="zz-vibe-label text-base">Global Ear 🌍</Label>
+                  <p style={{ marginTop: 6, fontSize: 14, lineHeight: 1.6, color: "#B4740A" }}>
+                    When on, Zanzibar weaves in songs from around the world. Pick specific countries below, or leave it open for a global surprise mix.
+                  </p>
                 </div>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                  <Switch checked={globalEar} onCheckedChange={setGlobalEar} aria-label="Toggle Global Ear" />
+                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.8, color: globalEar ? "#E4130C" : "#B4740A" }}>
+                    {globalEar ? "On" : "Off"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Country picker */}
+              <div style={{ borderRadius: 20, border: "1.5px solid rgba(228,19,12,0.18)", background: "#FFFCE0", padding: "20px 20px 16px", opacity: globalEar ? 1 : 0.45, transition: "opacity 200ms ease", pointerEvents: globalEar ? "auto" : "none" }}>
+
+                <p style={{ margin: "0 0 10px", fontSize: 12, fontWeight: 700, color: "#B4740A", letterSpacing: 0.8, textTransform: "uppercase" }}>
+                  Most musically active
+                </p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                  {FEATURED_COUNTRIES.map((c) => {
+                    const active = selectedCountries.includes(c.name);
+                    return (
+                      <button
+                        key={c.name}
+                        type="button"
+                        onClick={() => toggleCountry(c.name)}
+                        style={{
+                          borderRadius: 999,
+                          border: active ? "1.5px solid #E4130C" : "1.5px solid rgba(228,19,12,0.25)",
+                          background: active ? "#E4130C" : "#FFF6D8",
+                          color: active ? "#FFF3B0" : "#7A1200",
+                          padding: "7px 14px", fontSize: 13, fontWeight: 700,
+                          cursor: "pointer", display: "flex", alignItems: "center", gap: 5,
+                          transition: "all 140ms ease",
+                        }}
+                      >
+                        {c.flag} {c.name}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "#B4740A", letterSpacing: 0.8, textTransform: "uppercase" }}>
+                  Search any country
+                </p>
+                <div style={{ position: "relative" }}>
+                  <input
+                    type="text"
+                    value={countrySearch}
+                    onChange={(e) => setCountrySearch(e.target.value)}
+                    placeholder="e.g. Greece, India, Cuba…"
+                    style={{
+                      width: "100%", boxSizing: "border-box",
+                      padding: "10px 14px", borderRadius: 12,
+                      border: "1.5px solid rgba(228,19,12,0.25)",
+                      background: "#FFF6D8", color: "#7A1200",
+                      fontFamily: "'Poppins', system-ui, sans-serif", fontSize: 14,
+                      outline: "none",
+                    }}
+                  />
+                  {filteredCountries.length > 0 && (
+                    <div style={{
+                      position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 20,
+                      background: "#FFFCE0", border: "1.5px solid rgba(228,19,12,0.22)",
+                      borderRadius: 14, overflow: "hidden",
+                      boxShadow: "0 8px 28px rgba(122,18,0,0.12)",
+                    }}>
+                      {filteredCountries.map((c) => {
+                        const active = selectedCountries.includes(c.name);
+                        return (
+                          <button
+                            key={c.name}
+                            type="button"
+                            onClick={() => { toggleCountry(c.name); setCountrySearch(""); }}
+                            style={{
+                              display: "flex", alignItems: "center", gap: 10,
+                              width: "100%", padding: "10px 14px", textAlign: "left",
+                              background: active ? "rgba(228,19,12,0.08)" : "transparent",
+                              border: "none", borderBottom: "1px solid rgba(228,19,12,0.08)",
+                              cursor: "pointer", fontSize: 14, color: "#7A1200",
+                              fontFamily: "'Poppins', system-ui, sans-serif",
+                            }}
+                          >
+                            <span style={{ fontSize: 18 }}>{c.flag}</span>
+                            <span style={{ flex: 1, fontWeight: active ? 700 : 400 }}>{c.name}</span>
+                            {active && <span style={{ fontSize: 11, color: "#E4130C", fontWeight: 700 }}>✓ added</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {selectedCountries.length > 0 && (
+                  <div style={{ marginTop: 14 }}>
+                    <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "#E4130C", letterSpacing: 0.8, textTransform: "uppercase" }}>
+                      Requested ({selectedCountries.length})
+                    </p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {selectedCountries.map((name) => {
+                        const c = ALL_COUNTRIES.find((x) => x.name === name);
+                        return (
+                          <span key={name} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#E4130C", color: "#FFF3B0", borderRadius: 999, padding: "5px 10px 5px 12px", fontSize: 13, fontWeight: 700 }}>
+                            {c?.flag} {name}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedCountries((prev) => prev.filter((x) => x !== name))}
+                              style={{ background: "none", border: "none", cursor: "pointer", color: "#FFF3B0", padding: "0 2px", lineHeight: 1, opacity: 0.75, fontSize: 14 }}
+                              aria-label={`Remove ${name}`}
+                            >✕</button>
+                          </span>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCountries([])}
+                        style={{ background: "none", border: "1px solid rgba(228,19,12,0.3)", borderRadius: 999, padding: "5px 12px", fontSize: 12, color: "#B4740A", cursor: "pointer" }}
+                      >
+                        Clear all
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {selectedCountries.length === 0 && (
+                  <p style={{ margin: "14px 0 0", fontSize: 12, color: "#B4740A" }}>
+                    No countries selected — Zanzibar will pick a global surprise mix.
+                  </p>
+                )}
               </div>
             </div>
           )}
