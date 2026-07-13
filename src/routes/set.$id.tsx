@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Play, Pause, SkipForward, SkipBack, Trash2, ArrowUp, ArrowDown,
-  Save, ExternalLink, Music2, Volume2, Plus, Search, X, ClipboardList,
+  Save, ExternalLink, Music2, Volume2, Plus, Search, X, ClipboardList, Printer,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Track, Playlist, TransitionMode } from "@/lib/types";
@@ -20,6 +20,7 @@ import {
 import { useSpotifyPlayer, type SpotifyState } from "@/hooks/useSpotifyPlayer";
 import { ZanzibarPlant } from "@/components/ZanzibarPlant";
 import { OrderRecap } from "@/components/OrderRecap";
+import { CueSheet } from "@/components/CueSheet";
 import { DJLoading } from "@/components/DJLoading";
 
 export const Route = createFileRoute("/set/$id")({ component: SetPage });
@@ -56,6 +57,7 @@ function SetPage() {
   );
   const [insertAt, setInsertAt] = useState<number | null>(null); // index AFTER which to insert
   const [recapOpen, setRecapOpen] = useState(false);
+  const [cueSheetOpen, setCueSheetOpen] = useState(false);
 
   const resolveCache = useRef<Map<string, ResolvedTrack | null>>(new Map());
   const fadeOutTimer = useRef<number | null>(null);
@@ -619,6 +621,17 @@ function SetPage() {
         <ClipboardList size={14} /> Order Recap
       </button>
       {recapOpen && <OrderRecap brief={pl.brief} onClose={() => setRecapOpen(false)} />}
+
+      {/* Cue Sheet */}
+      <button
+        type="button"
+        onClick={() => setCueSheetOpen(true)}
+        className="zz-recap-btn"
+        style={{ top: 120 }}
+      >
+        <Printer size={14} /> Cue Sheet
+      </button>
+      {cueSheetOpen && <CueSheet playlist={pl} onClose={() => setCueSheetOpen(false)} />}
 
       <main style={{ maxWidth: 820, margin: "0 auto", padding: "40px 24px 40px" }}>
 

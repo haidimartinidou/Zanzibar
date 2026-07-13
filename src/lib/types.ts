@@ -36,6 +36,7 @@ export type Track = {
   transitionNote?: string;            // brief description of the transition idea
   globalEar?: boolean;   // marked as a Global Ear discovery pick
   language?: string;     // primary sung language (e.g. "Portuguese", "Yoruba")
+  cutCue?: string;       // AI-generated or manual human-readable cut instruction; overrides derived text in CueSheet
 };
 
 export type TransitionMode = "hard" | "smooth" | "long";
